@@ -176,13 +176,27 @@ _CSS = """
     background: #f6f8fa !important;
     color: #24292f !important;
     cursor: pointer;
-    white-space: nowrap;
 }
 .example-btn:hover {
     background: #e9ecef !important;
     border-color: #b0b7c0 !important;
 }
 """
+
+
+async def _streaming_with_reenable(message, history, session_state):
+    """包装 chat_handler，在流式结束时同步恢复输入框和按钮。
+
+    直接在最后一次 yield 中返回 gr.update(interactive=True)，
+    避免使用 .then() 链式调用导致 gr.update dict 渗入 chatbot。
+    """
+    last_history = history
+    async for h in chat_handler(message, history, session_state):
+        last_history = h
+        yield h, gr.update(), gr.update()   # 流式过程中不改变输入框/按钮状态
+    # 流结束后，在最后一次 yield 里恢复交互
+    yield last_history, gr.update(interactive=True), gr.update(interactive=True)
+
 
 def create_app() -> gr.Blocks:
     """创建 Gradio 应用。"""
@@ -191,7 +205,6 @@ def create_app() -> gr.Blocks:
         gr.Markdown("支持：综合目标设定 | 具体功能配置 | 数据洞察分析")
 
         session_state = gr.State(value={"session_hash": str(uuid.uuid4())})
-        # 暂存消息文本，用于先清空输入框再开始流式响应
         pending_msg = gr.State("")
 
         chatbot = gr.Chatbot(
@@ -199,13 +212,16 @@ def create_app() -> gr.Blocks:
             buttons=["copy", "copy_all"],
         )
 
-        # 示例消息快捷按钮（点击直接填入输入框）
-        gr.Markdown("**示例消息（点击填入）：**")
-        with gr.Row(elem_classes=["example-row"]):
-            example_btns = [
-                gr.Button(msg, elem_classes=["example-btn"], size="sm")
-                for msg in _EXAMPLE_MESSAGES
-            ]
+        # 示例消息快捷按钮，分两行排列避免溢出
+        gr.Markdown("**示例消息（点击发送）：**")
+        example_btns = []
+        rows = [_EXAMPLE_MESSAGES[:3], _EXAMPLE_MESSAGES[3:]]
+        for row_msgs in rows:
+            with gr.Row():
+                for msg in row_msgs:
+                    example_btns.append(
+                        gr.Button(msg, elem_classes=["example-btn"], size="sm")
+                    )
 
         with gr.Row():
             msg_input = gr.Textbox(
@@ -221,65 +237,48 @@ def create_app() -> gr.Blocks:
             new_session_btn = gr.Button("🔄 新建会话")
 
         def _capture_msg(msg):
-            """第一步：暂存消息、立即清空输入框、禁用发送按钮。"""
+            """暂存消息、立即清空输入框、禁用发送按钮。"""
             return (
-                msg,                                        # → pending_msg
-                gr.update(value="", interactive=False),    # → msg_input
-                gr.update(interactive=False),              # → send_btn
+                msg,
+                gr.update(value="", interactive=False),
+                gr.update(interactive=False),
             )
 
-        def _re_enable():
-            """流式完成后重新启用输入框和发送按钮。"""
-            return gr.update(interactive=True), gr.update(interactive=True)
-
-        def _chain(btn):
-            """为按钮绑定三步链式事件：捕获 → 流式 → 恢复。"""
+        # 示例按钮：捕获按钮文本 → 流式（含末尾恢复）
+        for btn in example_btns:
             btn.click(
                 fn=_capture_msg,
                 inputs=[btn],
                 outputs=[pending_msg, msg_input, send_btn],
                 queue=False,
             ).then(
-                fn=chat_handler,
+                fn=_streaming_with_reenable,
                 inputs=[pending_msg, chatbot, session_state],
-                outputs=[chatbot],
-            ).then(
-                fn=_re_enable,
-                outputs=[msg_input, send_btn],
+                outputs=[chatbot, msg_input, send_btn],
             )
 
-        # 示例按钮点击 → 直接触发发送（无需中转到输入框）
-        for btn in example_btns:
-            _chain(btn)
-
-        # 发送按钮：捕获消息 → 流式响应 → 恢复按钮
+        # 发送按钮
         send_btn.click(
             fn=_capture_msg,
             inputs=[msg_input],
             outputs=[pending_msg, msg_input, send_btn],
             queue=False,
         ).then(
-            fn=chat_handler,
+            fn=_streaming_with_reenable,
             inputs=[pending_msg, chatbot, session_state],
-            outputs=[chatbot],
-        ).then(
-            fn=_re_enable,
-            outputs=[send_btn],
+            outputs=[chatbot, msg_input, send_btn],
         )
 
-        # 回车提交：同样的三步链
+        # 回车提交
         msg_input.submit(
             fn=_capture_msg,
             inputs=[msg_input],
             outputs=[pending_msg, msg_input, send_btn],
             queue=False,
         ).then(
-            fn=chat_handler,
+            fn=_streaming_with_reenable,
             inputs=[pending_msg, chatbot, session_state],
-            outputs=[chatbot],
-        ).then(
-            fn=_re_enable,
-            outputs=[send_btn],
+            outputs=[chatbot, msg_input, send_btn],
         )
 
         clear_btn.click(lambda: [], outputs=[chatbot])
@@ -288,10 +287,7 @@ def create_app() -> gr.Blocks:
             new_hash = str(uuid.uuid4())
             return [], {"session_hash": new_hash}
 
-        new_session_btn.click(
-            fn=new_session,
-            outputs=[chatbot, session_state],
-        )
+        new_session_btn.click(fn=new_session, outputs=[chatbot, session_state])
 
     return app
 
@@ -299,8 +295,8 @@ def create_app() -> gr.Blocks:
 if __name__ == "__main__":
     app = create_app()
     app.launch(
-        server_name="0.0.0.0",   # 监听所有网卡，局域网内可访问
+        server_name="0.0.0.0",
         server_port=7860,
-        share=True,               # 同时生成 Gradio 公网临时链接
+        share=True,
         theme=gr.themes.Soft(),
     )
