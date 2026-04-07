@@ -63,15 +63,21 @@ class Tracer:
 
     def llm_prompt(self, messages: list) -> None:
         """记录发送给 LLM 的完整消息列表（system + history + user）。"""
-        # 将 agno Message 对象序列化为可读结构
         serialized = []
         for m in messages:
             try:
                 role = getattr(m, "role", "unknown")
                 content = getattr(m, "content", "")
-                # 截断超长内容避免 trace 文件过大（超过 4096 字符截断）
-                if isinstance(content, str) and len(content) > 4096:
-                    content = content[:4096] + "...[truncated]"
+                if isinstance(content, str):
+                    # tool 返回值通常是 ensure_ascii=True 的 JSON 字符串，
+                    # 先解析再用 ensure_ascii=False 重新序列化，还原可读中文
+                    try:
+                        parsed = json.loads(content)
+                        content = json.dumps(parsed, ensure_ascii=False)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    if len(content) > 4096:
+                        content = content[:4096] + "...[truncated]"
                 elif isinstance(content, list):
                     content = str(content)[:4096]
                 serialized.append({"role": str(role), "content": content})
