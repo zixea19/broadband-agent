@@ -161,6 +161,8 @@ def create_app() -> gr.Blocks:
         gr.Markdown("支持：综合目标设定 | 具体功能配置 | 数据洞察分析")
 
         session_state = gr.State(value={"session_hash": str(uuid.uuid4())})
+        # 暂存消息文本，用于先清空输入框再开始流式响应
+        pending_msg = gr.State("")
 
         chatbot = gr.Chatbot(
             height=600,
@@ -181,18 +183,47 @@ def create_app() -> gr.Blocks:
             clear_btn = gr.Button("🗑️ 清空对话")
             new_session_btn = gr.Button("🔄 新建会话")
 
-        # 事件绑定
-        send_btn.click(
-            fn=chat_handler,
-            inputs=[msg_input, chatbot, session_state],
-            outputs=[chatbot],
-        ).then(lambda: "", outputs=[msg_input])
+        def _capture_msg(msg):
+            """第一步：暂存消息、立即清空输入框、禁用发送按钮。"""
+            return (
+                msg,                                        # → pending_msg
+                gr.update(value="", interactive=False),    # → msg_input
+                gr.update(interactive=False),              # → send_btn
+            )
 
-        msg_input.submit(
+        def _re_enable():
+            """流式完成后重新启用发送按钮。"""
+            return gr.update(interactive=True)
+
+        # 发送按钮：捕获消息 → 流式响应 → 恢复按钮
+        send_btn.click(
+            fn=_capture_msg,
+            inputs=[msg_input],
+            outputs=[pending_msg, msg_input, send_btn],
+            queue=False,
+        ).then(
             fn=chat_handler,
-            inputs=[msg_input, chatbot, session_state],
+            inputs=[pending_msg, chatbot, session_state],
             outputs=[chatbot],
-        ).then(lambda: "", outputs=[msg_input])
+        ).then(
+            fn=_re_enable,
+            outputs=[send_btn],
+        )
+
+        # 回车提交：同样的三步链
+        msg_input.submit(
+            fn=_capture_msg,
+            inputs=[msg_input],
+            outputs=[pending_msg, msg_input, send_btn],
+            queue=False,
+        ).then(
+            fn=chat_handler,
+            inputs=[pending_msg, chatbot, session_state],
+            outputs=[chatbot],
+        ).then(
+            fn=_re_enable,
+            outputs=[send_btn],
+        )
 
         clear_btn.click(lambda: [], outputs=[chatbot])
 
@@ -210,4 +241,9 @@ def create_app() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = create_app()
-    app.launch(server_name="127.0.0.1", server_port=7860, theme=gr.themes.Soft())
+    app.launch(
+        server_name="0.0.0.0",   # 监听所有网卡，局域网内可访问
+        server_port=7860,
+        share=True,               # 同时生成 Gradio 公网临时链接
+        theme=gr.themes.Soft(),
+    )
