@@ -10,8 +10,8 @@ timeout: 60
 
 # 角色映射（可选）— 用于不支持 developer 角色的 OpenAI 兼容 API（如 Qwen、DeepSeek 等）
 # 取消注释以下内容即可将 system 角色保持为 system（而非 OpenAI 新规的 developer）
-# role_map:
-#   system: system
-#   user: user
-#   assistant: assistant
-#   tool: tool
+role_map:
+  system: system
+  user: user
+  assistant: assistant
+  tool: tool
