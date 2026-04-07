@@ -138,7 +138,6 @@ def create_app() -> gr.Blocks:
     """创建 Gradio 应用。"""
     with gr.Blocks(
         title="家宽网络调优助手",
-        theme=gr.themes.Soft(),
     ) as app:
         gr.Markdown("# 🏠 家宽网络调优智能助手")
         gr.Markdown("支持：综合目标设定 | 具体功能配置 | 数据洞察分析")
@@ -146,7 +145,6 @@ def create_app() -> gr.Blocks:
         session_state = gr.State(value={"session_hash": str(uuid.uuid4())})
 
         chatbot = gr.Chatbot(
-            type="messages",
             height=600,
             show_copy_button=True,
             placeholder="请输入您的需求，例如：\n- 直播套餐卖场走播用户，18:00-22:00 保障抖音直播\n- 生成 CEI 配置\n- 找出 CEI 分数较低的 PON 口并分析原因",
@@ -194,4 +192,4 @@ def create_app() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = create_app()
-    app.launch(server_name="0.0.0.0", server_port=7860)
+    app.launch(server_name="0.0.0.0", server_port=7860, theme=gr.themes.Soft())
