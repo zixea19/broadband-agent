@@ -1,0 +1,109 @@
+{
+  "remote_loop": {
+    "name": "默认远程闭环配置",
+    "version": "1.0",
+    "trigger": {
+      "type": "complaint",
+      "keywords": ["网速慢", "断线", "卡顿", "延迟高"],
+      "auto_trigger": true
+    },
+
+    "diagnosis_steps": [
+      {
+        "step_id": 1,
+        "name": "基础连通性检测",
+        "action": "ping_test",
+        "params": {
+          "target": "gateway",
+          "count": 10,
+          "timeout_ms": 3000
+        },
+        "success_criteria": {
+          "packet_loss_max": 0.02,
+          "latency_avg_max_ms": 50
+        }
+      },
+      {
+        "step_id": 2,
+        "name": "光链路检测",
+        "action": "optical_check",
+        "params": {
+          "check_items": ["rx_power", "tx_power", "ber"]
+        },
+        "success_criteria": {
+          "rx_power_min_dbm": -25,
+          "ber_max": 1e-9
+        }
+      },
+      {
+        "step_id": 3,
+        "name": "带宽测速",
+        "action": "speed_test",
+        "params": {
+          "direction": "both",
+          "duration_seconds": 10
+        },
+        "success_criteria": {
+          "download_min_mbps": 50,
+          "upload_min_mbps": 10
+        }
+      },
+      {
+        "step_id": 4,
+        "name": "Wifi 质量检测",
+        "action": "wifi_quality_check",
+        "params": {
+          "check_items": ["signal_strength", "channel_interference", "client_count"]
+        },
+        "success_criteria": {
+          "signal_min_dbm": -65,
+          "channel_util_max": 0.70
+        }
+      }
+    ],
+
+    "repair_actions": [
+      {
+        "action_id": "R1",
+        "name": "ONU 重启",
+        "condition": "step_1_failed OR step_2_failed",
+        "params": {
+          "wait_after_seconds": 120
+        }
+      },
+      {
+        "action_id": "R2",
+        "name": "Wifi 信道优化",
+        "condition": "step_4_failed",
+        "params": {
+          "auto_channel_select": true,
+          "prefer_5g": true
+        }
+      },
+      {
+        "action_id": "R3",
+        "name": "QoS 策略调整",
+        "condition": "step_3_failed AND step_1_passed",
+        "params": {
+          "priority_boost": true,
+          "bandwidth_guarantee_mbps": 50
+        }
+      }
+    ],
+
+    "verification": {
+      "enabled": true,
+      "wait_before_verify_seconds": 60,
+      "rerun_diagnosis": true,
+      "success_report": true,
+      "failure_escalation": {
+        "enabled": true,
+        "target": "L2_support",
+        "include_diagnosis_log": true
+      }
+    },
+
+    "timeout_minutes": 15,
+    "max_repair_attempts": 2
+  }
+}

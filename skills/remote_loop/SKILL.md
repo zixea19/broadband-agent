@@ -19,13 +19,13 @@ description: "生成远程闭环配置，用于网络问题的远程自动化诊
 - ❌ 用户在进行手动诊断操作
 
 ## How to Use
-1. 加载 `templates/default_loop.json`
+1. 调用 `get_skill_reference("remote_loop", "default_loop.json")` 加载默认配置模板
 2. 展示默认闭环流程配置
 3. 根据用户需求调整
 4. 生成最终配置
 
-## Templates / References
-- `templates/default_loop.json` — 默认远程闭环配置
+## References
+- `default_loop.json` — 默认远程闭环配置
 
 ## Examples
 

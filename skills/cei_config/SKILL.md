@@ -20,14 +20,14 @@ description: "生成 CEI (Customer Experience Index) Spark 配置，用于网络
 - ❌ 用户要求分析 CEI 数据（应使用 data_insight）
 
 ## How to Use
-1. 加载 `templates/default_cei.yaml` 默认配置模板
+1. 调用 `get_skill_reference("cei_config", "default_cei.yaml")` 加载默认配置模板
 2. 展示默认配置给用户，高亮可修改字段
 3. 等待用户确认或指定修改
 4. 应用用户修改，生成最终配置
 5. 可选：调用 downstream dispatch 下发配置
 
-## Templates / References
-- `templates/default_cei.yaml` — 默认 CEI Spark 配置模板
+## References
+- `default_cei.yaml` — 默认 CEI Spark 配置模板
 
 ## Examples
 

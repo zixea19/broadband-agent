@@ -19,13 +19,13 @@ description: "生成 Wifi 无线仿真配置，用于模拟和评估无线网络
 - ❌ 用户只是问 Wifi 相关概念
 
 ## How to Use
-1. 加载 `templates/default_wifi.yaml`
+1. 调用 `get_skill_reference("wifi_simulation", "default_wifi.yaml")` 加载默认配置模板
 2. 展示默认配置，说明可调参数
 3. 根据用户需求修改参数
 4. 生成最终仿真配置
 
-## Templates / References
-- `templates/default_wifi.yaml` — 默认 Wifi 仿真配置
+## References
+- `default_wifi.yaml` — 默认 Wifi 仿真配置
 
 ## Examples
 

@@ -1,0 +1,38 @@
+cei_spark:
+  # 目标 PON 口（必填）
+  target_pon: "PON-x/x/x"
+
+  # 采集间隔（秒）
+  collection_interval: 300
+
+  # 采集指标列表
+  metrics:
+    - bandwidth_utilization      # 带宽利用率
+    - packet_loss_rate           # 丢包率
+    - latency_avg                # 平均时延
+    - jitter                     # 抖动
+    - connection_stability       # 连接稳定性
+    - dns_resolution_time        # DNS 解析时间
+
+  # 告警阈值
+  threshold:
+    cei_score_warning: 70        # CEI 分数低于此值告警
+    cei_score_critical: 50       # CEI 分数低于此值严重告警
+    bandwidth_util_max: 0.90     # 带宽利用率上限
+    packet_loss_max: 0.02        # 丢包率上限
+    latency_max_ms: 50           # 最大时延(ms)
+
+  # 评估权重
+  weights:
+    bandwidth_utilization: 0.30
+    packet_loss_rate: 0.25
+    latency_avg: 0.20
+    jitter: 0.10
+    connection_stability: 0.10
+    dns_resolution_time: 0.05
+
+  # 报告配置
+  report:
+    enabled: true
+    frequency: hourly            # hourly | daily
+    recipients: []               # 告警接收人邮箱

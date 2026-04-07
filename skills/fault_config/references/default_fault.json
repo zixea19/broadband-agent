@@ -1,0 +1,82 @@
+{
+  "fault_config": {
+    "name": "默认故障检测配置",
+    "version": "1.0",
+
+    "detection_rules": [
+      {
+        "rule_id": "FAULT-001",
+        "name": "光功率异常",
+        "type": "optical_power",
+        "condition": {
+          "metric": "rx_optical_power_dbm",
+          "operator": "less_than",
+          "threshold": -25.0
+        },
+        "severity": "critical",
+        "auto_recover": false
+      },
+      {
+        "rule_id": "FAULT-002",
+        "name": "高丢包率",
+        "type": "packet_loss",
+        "condition": {
+          "metric": "packet_loss_rate",
+          "operator": "greater_than",
+          "threshold": 0.05,
+          "duration_minutes": 5
+        },
+        "severity": "major",
+        "auto_recover": true
+      },
+      {
+        "rule_id": "FAULT-003",
+        "name": "链路中断",
+        "type": "link_down",
+        "condition": {
+          "metric": "link_status",
+          "operator": "equals",
+          "value": "down",
+          "duration_minutes": 1
+        },
+        "severity": "critical",
+        "auto_recover": false
+      },
+      {
+        "rule_id": "FAULT-004",
+        "name": "高时延",
+        "type": "latency",
+        "condition": {
+          "metric": "latency_ms",
+          "operator": "greater_than",
+          "threshold": 100,
+          "duration_minutes": 3
+        },
+        "severity": "warning",
+        "auto_recover": true
+      }
+    ],
+
+    "recovery_actions": {
+      "auto_restart_onu": {
+        "enabled": true,
+        "max_retries": 3,
+        "retry_interval_seconds": 60
+      },
+      "traffic_reroute": {
+        "enabled": false,
+        "backup_path": null
+      },
+      "notification": {
+        "enabled": true,
+        "channels": ["sms", "email"],
+        "escalation_timeout_minutes": 30
+      }
+    },
+
+    "monitoring": {
+      "check_interval_seconds": 60,
+      "history_retention_days": 30
+    }
+  }
+}
