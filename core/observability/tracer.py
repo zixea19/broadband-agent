@@ -76,10 +76,8 @@ class Tracer:
                         content = json.dumps(parsed, ensure_ascii=False)
                     except (json.JSONDecodeError, TypeError):
                         pass
-                    if len(content) > 4096:
-                        content = content[:4096] + "...[truncated]"
                 elif isinstance(content, list):
-                    content = str(content)[:4096]
+                    content = json.dumps(content, ensure_ascii=False, default=str)
                 serialized.append({"role": str(role), "content": content})
             except Exception:
                 serialized.append({"role": "unknown", "content": str(m)[:512]})
