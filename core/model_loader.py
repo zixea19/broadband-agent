@@ -42,19 +42,30 @@ def create_model(config: Dict[str, Any] = None):
         "timeout": config.get("timeout", 60),
     }
 
+    # 自定义 role_map（用于不支持 developer 角色的 OpenAI 兼容 API）
+    role_map = config.get("role_map")
+
     if provider == "openrouter":
         from agno.models.openrouter import OpenRouter
-        model = OpenRouter(
-            **common_params,
-            base_url=config.get("base_url", "https://openrouter.ai/api/v1"),
-        )
+        params = {**common_params, "base_url": config.get("base_url", "https://openrouter.ai/api/v1")}
+        if role_map:
+            params["role_map"] = role_map
+        model = OpenRouter(**params)
     elif provider == "openai":
         from agno.models.openai import OpenAIChat
         params = {**common_params}
         base_url = config.get("base_url")
         if base_url:
             params["base_url"] = base_url
+        if role_map:
+            params["role_map"] = role_map
         model = OpenAIChat(**params)
+    elif provider == "openai_like":
+        from agno.models.openai.like import OpenAILike
+        model = OpenAILike(
+            **common_params,
+            base_url=config.get("base_url", ""),
+        )
     else:
         # 通用 OpenAI 兼容
         from agno.models.openai.like import OpenAILike
