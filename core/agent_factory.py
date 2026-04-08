@@ -69,6 +69,18 @@ def create_agent(session_id: str = None) -> Agent:
     # Skills
     skills = _load_skills(agent_cfg.get("skills_dir", "skills/"))
 
+    # 将 Skills 元数据追加到 system_prompt，确保 LLM 能感知所有可用 Skill
+    # 原因：Agent 以 system_message= 显式传入时，agno 早期 return（第 152 行），
+    # 跳过内部的 skills.get_system_prompt_snippet() 注入（第 282-285 行），需手动补注。
+    if skills is not None and system_prompt:
+        try:
+            skills_snippet = skills.get_system_prompt_snippet()
+            if skills_snippet:
+                system_prompt = system_prompt + "\n\n" + skills_snippet
+                logger.debug(f"Skills snippet 已追加到 system_prompt ({len(skills_snippet)} chars)")
+        except Exception:
+            logger.warning("Skills snippet 获取失败，system prompt 将不含 Skills 描述")
+
     # SQLite 存储（用于 add_history_to_context）
     db_path = _PROJECT_ROOT / "data" / "agent_sessions.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
