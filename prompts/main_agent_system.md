@@ -71,6 +71,12 @@
 1. `get_skill_instructions(skill_name)` → 查看 `available_scripts`
 2. `get_skill_script(skill_name, script_path=<available_scripts 中的文件名>)`
 
+### 脚本输出处理规则
+
+`get_skill_script` 返回的 `stdout` 是脚本的最终产物：
+- **渲染类脚本**（输出 Markdown，如报告/文档）：`stdout` 必须**完整、原样**嵌入最终回答，禁止二次改写或重新排版
+- **查询/计算类脚本**（输出 JSON）：基于 `stdout` 数据进行分析阐述，但禁止虚构数据
+
 ## 5. 综合目标追问规则
 
 综合目标任务进入 `slot_filling` 后，该 Skill 采用 **Inversion 模式**自主管理追问流程（先访谈再执行）。系统 Prompt 不感知追问细节，具体行为（追问数量、顺序、槽位定义）详见 slot_filling Skill 说明。
