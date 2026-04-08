@@ -98,7 +98,16 @@ def render_from_insight(profile_json: str) -> str:
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        print(render_all(sys.argv[1]))
+        _input = sys.argv[1]
+        try:
+            _profile = json.loads(_input)
+        except json.JSONDecodeError:
+            print(json.dumps({"error": "无效的画像 JSON"}, ensure_ascii=False))
+            sys.exit(1)
+        if _profile.get("mode") == "data_insight":
+            print(render_from_insight(_input))
+        else:
+            print(render_all(_input))
     else:
         sample = json.dumps({
             "user_type": "主播用户",
