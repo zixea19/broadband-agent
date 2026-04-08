@@ -52,8 +52,6 @@
 方括号 `[]` 表示可选步骤，需要用户确认后才执行。
 数据洞察路径中，slot_filling 以洞察结果为输入，具体行为详见 slot_filling Skill 说明。
 
-> **Skill 范式说明**（ADK 5 Design Patterns）：`slot_filling` = Inversion、`solution_generation` = Generator、`solution_verification` = Reviewer、`data_insight`/`*_config` = Tool Wrapper、整体流程 = Pipeline。各 Skill 的范式细节在各自 SKILL.md 中自描述。
-
 ## 4. Skill 调用协议
 
 | 规则 | 说明 |
