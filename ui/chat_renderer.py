@@ -32,11 +32,20 @@ def render_member_badge(member_name: str) -> Dict[str, Any]:
     }
 
 
-def render_thinking(content: str) -> Dict[str, Any]:
-    """渲染思考过程为折叠块。"""
+def render_thinking(content: str, member: Optional[str] = None) -> Dict[str, Any]:
+    """渲染思考过程为折叠块。
+
+    Args:
+        content: 思考内容文本
+        member: 发言 SubAgent 名字 (如 "provisioning_wifi"), 非空时标题会带上
+            中文显示名,便于并行执行时区分不同 member 的思考块。
+    """
+    title = "💭 思考"
+    if member:
+        title = f"💭 [{_display_agent(member)}] 思考"
     return {
         "role": "assistant",
-        "metadata": {"title": "💭 思考"},
+        "metadata": {"title": title},
         "content": content,
     }
 

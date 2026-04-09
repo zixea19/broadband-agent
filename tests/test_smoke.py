@@ -479,6 +479,318 @@ def test_report_rendering():
 
 
 # ============================================================================
+# UI 流式处理 (ui/app.py chat_handler)
+# ============================================================================
+
+
+class _FakeEvent:
+    """模拟 agno 事件对象。只实现 chat_handler 会访问的字段。"""
+
+    def __init__(
+        self,
+        event: str,
+        agent_id: str = "",
+        agent_name: str = "",
+        team_id: str = "",
+        team_name: str = "",
+        reasoning_content: str = "",
+        content=None,
+        tool=None,
+    ):
+        self.event = event
+        self.agent_id = agent_id
+        self.agent_name = agent_name
+        self.team_id = team_id
+        self.team_name = team_name
+        self.reasoning_content = reasoning_content
+        self.content = content
+        self.tool = tool
+
+
+class _FakeTool:
+    def __init__(self, tool_name: str, tool_args=None, result=None):
+        self.tool_name = tool_name
+        self.tool_args = tool_args
+        self.result = result
+
+
+class _FakeTracer:
+    """无副作用的 tracer 桩,吞掉所有 trace 调用。"""
+
+    def __getattr__(self, _name):
+        def _noop(*args, **kwargs):
+            return None
+        return _noop
+
+
+class _FakeTeam:
+    """模拟 agno Team, arun 返回一个手工构造的 async generator。"""
+
+    def __init__(self, name: str, events):
+        self.name = name
+        self._events = events
+
+    def arun(self, *args, **kwargs):
+        events = self._events
+
+        async def _gen():
+            for ev in events:
+                yield ev
+
+        return _gen()
+
+
+class _FakeCtx:
+    def __init__(self, team):
+        self.team = team
+        self.tracer = _FakeTracer()
+        self.db_session_id = None
+
+
+def _run_chat_handler_sync(events, team_name: str = "home-broadband-team"):
+    """同步运行 chat_handler,返回最终 history。
+
+    用 asyncio.run 包住 async generator 的 drain。
+    """
+    import asyncio
+
+    # 延迟导入避免测试模块顶层加载 gradio 等重依赖
+    from ui import app as app_module
+
+    fake_team = _FakeTeam(team_name, events)
+    fake_ctx = _FakeCtx(fake_team)
+
+    # monkey-patch session_manager + db
+    orig_session_manager = app_module.session_manager
+
+    class _FakeSessionManager:
+        def get_or_create(self, _hash):
+            return fake_ctx
+
+    app_module.session_manager = _FakeSessionManager()
+    try:
+        async def _drain():
+            last = []
+            async for h in app_module.chat_handler(
+                "test message",
+                [],
+                {"session_hash": "test-hash"},
+            ):
+                last = h
+            return last
+
+        return asyncio.run(_drain())
+    finally:
+        app_module.session_manager = orig_session_manager
+
+
+def test_extract_source_id_member_event():
+    from ui.app import _extract_source_id
+
+    ev = _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_wifi")
+    assert _extract_source_id(ev, is_leader=False) == "provisioning_wifi"
+
+    # 空 agent_id 回退到 agent_name
+    ev2 = _FakeEvent(event="ReasoningContentDelta", agent_id="", agent_name="provisioning_delivery")
+    assert _extract_source_id(ev2, is_leader=False) == "provisioning_delivery"
+
+    # 两者都为空
+    ev3 = _FakeEvent(event="ReasoningContentDelta")
+    assert _extract_source_id(ev3, is_leader=False) is None
+
+
+def test_extract_source_id_leader_event():
+    from ui.app import _extract_source_id
+
+    ev = _FakeEvent(event="TeamReasoningContentDelta", team_id="home-broadband-team")
+    assert _extract_source_id(ev, is_leader=True) == "home-broadband-team"
+
+    ev2 = _FakeEvent(event="TeamReasoningContentDelta", team_id="", team_name="fallback-team")
+    assert _extract_source_id(ev2, is_leader=True) == "fallback-team"
+
+
+def test_is_team_leader_event():
+    from ui.app import _is_team_leader_event
+
+    assert _is_team_leader_event("TeamReasoningContentDelta") is True
+    assert _is_team_leader_event("TeamRunContent") is True
+    assert _is_team_leader_event("ReasoningContentDelta") is False
+    assert _is_team_leader_event("RunContent") is False
+    assert _is_team_leader_event("") is False
+
+
+def test_chat_handler_per_source_reasoning_isolation():
+    """核心回归测试:并行 member 的交错 ReasoningContentDelta 不得混词。
+
+    模拟场景: wifi 和 delivery 两个 member 的推理 delta 在同一个流里交错。
+    期望: 最终 history 里有两个独立的 thinking 块,每个只含单一 source 的
+    内容;"透传产出" 这个被测试场景里的关键词必须完整出现在某一个块里,
+    绝不能被切成 "6. 透" 和 "传产出" 分散到两个块中 (旧 bug 的症状)。
+    """
+    events = [
+        # wifi 开始推理 (一段话)
+        _FakeEvent(
+            event="ReasoningContentDelta",
+            agent_id="provisioning_wifi",
+            agent_name="provisioning_wifi",
+            reasoning_content="处理缺失项\n4. 展示推导过程\n5. 调用 Skill\n6. 透",
+        ),
+        # delivery 插入一段自己的推理 (bug 场景: 此刻会污染单 buffer)
+        _FakeEvent(
+            event="ReasoningContentDelta",
+            agent_id="provisioning_delivery",
+            agent_name="provisioning_delivery",
+            reasoning_content="当前挂载的技能是 differentiated_delivery,有一个脚本 render.py。",
+        ),
+        # wifi 继续,补完被 delivery 打断的话
+        _FakeEvent(
+            event="ReasoningContentDelta",
+            agent_id="provisioning_wifi",
+            agent_name="provisioning_wifi",
+            reasoning_content="传产出。",
+        ),
+        # wifi 的 reasoning 结束
+        _FakeEvent(
+            event="ReasoningCompleted",
+            agent_id="provisioning_wifi",
+            agent_name="provisioning_wifi",
+        ),
+        # delivery 也结束
+        _FakeEvent(
+            event="ReasoningCompleted",
+            agent_id="provisioning_delivery",
+            agent_name="provisioning_delivery",
+        ),
+    ]
+
+    history = _run_chat_handler_sync(events)
+
+    # 提取所有 thinking 块
+    thinking_blocks = [
+        m for m in history
+        if isinstance(m, dict)
+        and m.get("metadata", {}).get("title", "").startswith("💭")
+    ]
+    assert len(thinking_blocks) >= 2, f"应至少 2 个思考块(wifi + delivery),实际 {len(thinking_blocks)}"
+
+    # 把每个块归属到 source (通过标题里的 display 名判断)
+    wifi_content = ""
+    delivery_content = ""
+    for block in thinking_blocks:
+        title = block["metadata"]["title"]
+        content = block["content"]
+        if "WIFI 仿真" in title:
+            wifi_content += content
+        elif "差异化承载" in title:
+            delivery_content += content
+
+    # 关键断言 1: wifi 的内容含完整的 "透传产出",没被切断
+    assert "透传产出" in wifi_content, (
+        f"wifi 的思考应含完整的'透传产出',实际: {wifi_content!r}"
+    )
+    # 关键断言 2: delivery 的内容含完整的 "differentiated_delivery"
+    assert "differentiated_delivery" in delivery_content, (
+        f"delivery 的思考应含 'differentiated_delivery',实际: {delivery_content!r}"
+    )
+    # 关键断言 3: wifi 的块里不能混进 delivery 的内容
+    assert "differentiated_delivery" not in wifi_content, (
+        f"wifi 思考块污染了 delivery 的内容: {wifi_content!r}"
+    )
+    # 关键断言 4: delivery 的块里不能混进 wifi 特有的内容
+    assert "处理缺失项" not in delivery_content, (
+        f"delivery 思考块污染了 wifi 的内容: {delivery_content!r}"
+    )
+
+
+def test_chat_handler_tool_call_from_other_member_does_not_contaminate():
+    """member A 的 tool_call 可以让 member B 的思考分段,但绝不能把 A 的内容混到 B 的块里。
+
+    说明: wifi 的首个事件就是 tool_call 时,徽章渲染会固化 delivery 的当前 buffer
+    (设计意图: 不让徽章插在旧思考中间)。分段是可接受的,核心要求是每段内容只来
+    自单一 source,不出现跨 member 的混词 (这才是原 bug 的症状)。
+    """
+    events = [
+        # delivery 开始推理
+        _FakeEvent(
+            event="ReasoningContentDelta",
+            agent_id="provisioning_delivery",
+            agent_name="provisioning_delivery",
+            reasoning_content="分析参数 schema",
+        ),
+        # wifi 首次出现 + 立即发起 tool_call (首次触发徽章 → 固化 delivery 当前 buffer)
+        _FakeEvent(
+            event="ToolCallStarted",
+            agent_id="provisioning_wifi",
+            agent_name="provisioning_wifi",
+            tool=_FakeTool(tool_name="get_skill_instructions", tool_args={"skill_name": "wifi_simulation"}),
+        ),
+        # delivery 继续推理 (新 buffer,独立分段)
+        _FakeEvent(
+            event="ReasoningContentDelta",
+            agent_id="provisioning_delivery",
+            agent_name="provisioning_delivery",
+            reasoning_content="确认字段对齐。",
+        ),
+        # delivery reasoning 结束
+        _FakeEvent(
+            event="ReasoningCompleted",
+            agent_id="provisioning_delivery",
+            agent_name="provisioning_delivery",
+        ),
+    ]
+
+    history = _run_chat_handler_sync(events)
+
+    delivery_blocks = [
+        m for m in history
+        if isinstance(m, dict)
+        and "差异化承载" in m.get("metadata", {}).get("title", "")
+        and m["metadata"]["title"].startswith("💭")
+    ]
+    assert len(delivery_blocks) >= 1, "delivery 思考块必须存在"
+
+    # 核心断言 1: 每个 delivery 块的内容必须只来自 delivery,不含 wifi 的工具/思考痕迹
+    for block in delivery_blocks:
+        content = block["content"]
+        assert "wifi_simulation" not in content, f"delivery 块被 wifi tool_call 污染: {content!r}"
+        assert "get_skill_instructions" not in content, f"delivery 块被 wifi tool_call 污染: {content!r}"
+
+    # 核心断言 2: delivery 的两段内容(可能分散在多个块里)都应被保留,没有丢失
+    combined = "".join(b["content"] for b in delivery_blocks)
+    assert "分析参数 schema" in combined, f"delivery 第一段内容丢失: {combined!r}"
+    assert "确认字段对齐" in combined, f"delivery 第二段内容丢失: {combined!r}"
+
+    # 顺序验证: 先出现的内容在前面的块里
+    first_block_text = delivery_blocks[0]["content"]
+    assert "分析参数 schema" in first_block_text, (
+        f"delivery 第一段应出现在第一个块里,实际首块: {first_block_text!r}"
+    )
+
+
+def test_chat_handler_member_badge_once_per_member():
+    """每个 member 一轮只渲染一次徽章,即使事件反复交错。"""
+    events = [
+        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_wifi", reasoning_content="a"),
+        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_delivery", reasoning_content="b"),
+        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_wifi", reasoning_content="c"),
+        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_delivery", reasoning_content="d"),
+        _FakeEvent(event="ReasoningCompleted", agent_id="provisioning_wifi"),
+        _FakeEvent(event="ReasoningCompleted", agent_id="provisioning_delivery"),
+    ]
+    history = _run_chat_handler_sync(events)
+
+    badges = [
+        m for m in history
+        if isinstance(m, dict) and m.get("metadata", {}).get("title", "").startswith("👤")
+    ]
+    # 每个 member 只应出现一个徽章
+    wifi_badges = [b for b in badges if "WIFI 仿真" in b["metadata"]["title"]]
+    delivery_badges = [b for b in badges if "差异化承载" in b["metadata"]["title"]]
+    assert len(wifi_badges) == 1, f"wifi 徽章应 1 个,实际 {len(wifi_badges)}"
+    assert len(delivery_badges) == 1, f"delivery 徽章应 1 个,实际 {len(delivery_badges)}"
+
+
+# ============================================================================
 # Agno Team 装配
 # ============================================================================
 

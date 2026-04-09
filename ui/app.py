@@ -27,8 +27,24 @@ from ui.chat_renderer import (
 setup_logger()
 
 
-# 把事件名中的 Team 前缀去掉便于统一匹配（Team 事件与 Agent 事件结构一致）
+# ─── 事件解析工具 ──────────────────────────────────────────────────────
+#
+# agno 2.5.x Team 在 coordinate 模式下 (stream_member_events=True) 会把多个
+# member 的事件通过 asyncio.Queue 随机交错地 merge 到主流 — 同一 member 的
+# 连续 ReasoningContentDelta 之间可能被其他 member 的事件插入。
+#
+# 权威字段 (见 agno/run/agent.py:196-228, agno/run/team.py:190-228):
+#   member 事件: agent_id / agent_name (原始事件名无前缀, 如 "ReasoningContentDelta")
+#   leader 事件: team_id  / team_name  (原始事件名有前缀, 如 "TeamReasoningContentDelta")
+# 注: agent_id / team_id 在 dataclass 里默认是 "" (str, 非 None), 要用 truthiness
+# 检查而非 `is not None`。
+def _is_team_leader_event(raw_event_type: str) -> bool:
+    """原始事件名是否属于 Team leader (以 Team 开头)。"""
+    return bool(raw_event_type) and raw_event_type.startswith("Team")
+
+
 def _normalize_event_type(raw: str) -> str:
+    """剥掉 Team 前缀,便于下游统一匹配 (Team 事件与 Agent 事件结构一致)。"""
     if not raw:
         return ""
     if raw.startswith("Team"):
@@ -36,17 +52,29 @@ def _normalize_event_type(raw: str) -> str:
     return raw
 
 
-def _extract_member_name(event: Any) -> Optional[str]:
-    """从事件对象上尝试识别当前发言的 SubAgent 名字。"""
-    for attr in ("agent_name", "member_name", "from_agent", "agent_id"):
+def _extract_source_id(event: Any, is_leader: bool) -> Optional[str]:
+    """从事件对象提取发言者的稳定标识。
+
+    Args:
+        event: agno 事件对象
+        is_leader: 是否是 Team leader 事件 (来自 _is_team_leader_event 的结果)
+
+    Returns:
+        - leader 事件: event.team_id 或 team_name
+        - member 事件: event.agent_id 或 agent_name
+        - 两者都拿不到 → None (该事件无法归属到任何 source)
+    """
+    if is_leader:
+        for attr in ("team_id", "team_name"):
+            val = getattr(event, attr, None)
+            if val:
+                return str(val)
+        return None
+
+    for attr in ("agent_id", "agent_name"):
         val = getattr(event, attr, None)
         if val:
             return str(val)
-    agent = getattr(event, "agent", None)
-    if agent is not None:
-        name = getattr(agent, "name", None)
-        if name:
-            return str(name)
     return None
 
 
@@ -55,7 +83,15 @@ async def chat_handler(
     history: List[Dict[str, Any]],
     session_state: Optional[Dict] = None,
 ) -> AsyncIterator[List[Dict[str, Any]]]:
-    """Gradio chat handler — 异步流式输出 Team 事件。"""
+    """Gradio chat handler — 异步流式输出 Team 事件。
+
+    核心设计: 单 active reasoning buffer + source 切换时立即 flush。
+    - reasoning_buffer 只归属 reasoning_source 一个 source
+    - 收到其他 source 的 reasoning delta 时, 先 flush 旧 buffer 为 history 上
+      的最终态 thinking 块 (带旧 source 的 display 名), 再为新 source 开 buffer
+    - ToolCallStarted / ReasoningCompleted 仅在 source_id == reasoning_source
+      时 flush, 防止误伤其他 member 的 in-flight buffer
+    """
     if not message or not message.strip():
         yield history
         return
@@ -75,10 +111,20 @@ async def chat_handler(
 
     full_content = ""
     reasoning_buffer = ""
-    current_member: Optional[str] = None
-    # 本轮已渲染过徽章的 member 集合 — 每个 SubAgent 只展示一次入场标记，
-    # 避免并行执行时事件交错导致徽章反复切换重复渲染。
+    reasoning_source: Optional[str] = None      # 当前 in-flight thinking 归属的 source_id
+    current_member: Optional[str] = None        # 最近一次 member 事件的 source_id (非 leader)
+    # 本轮已渲染过徽章的 member 集合 — 每个 SubAgent 只展示一次入场标记。
     seen_members: set = set()
+
+    def _flush_reasoning(hist: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """把 reasoning_buffer 固化到 history 末尾, 清空 buffer。"""
+        nonlocal reasoning_buffer, reasoning_source
+        if reasoning_buffer:
+            ctx.tracer.thinking(reasoning_buffer)
+            hist = hist + [render_thinking(reasoning_buffer, member=reasoning_source)]
+        reasoning_buffer = ""
+        reasoning_source = None
+        return hist
 
     try:
         response_stream = ctx.team.arun(
@@ -91,39 +137,44 @@ async def chat_handler(
         async for event in response_stream:
             raw_event_type = getattr(event, "event", "")
             event_type = _normalize_event_type(raw_event_type)
+            is_leader = _is_team_leader_event(raw_event_type)
+            source_id = _extract_source_id(event, is_leader)
 
-            # ---- 识别当前发言 SubAgent ----
-            # 每次都更新 current_member 以反映最新事件来源 (供 tool_call 标签使用),
-            # 但徽章只在该 member 首次出现时渲染一次。
-            member = _extract_member_name(event)
-            if member and member != ctx.team.name:
-                current_member = member
-                if member not in seen_members:
-                    seen_members.add(member)
-                    if reasoning_buffer:
-                        ctx.tracer.thinking(reasoning_buffer)
-                        history = history + [render_thinking(reasoning_buffer)]
-                        reasoning_buffer = ""
-                    history = history + [render_member_badge(member)]
+            # ---- Member 徽章(每个 member 一轮只渲染一次) ----
+            if source_id and not is_leader:
+                current_member = source_id
+                if source_id not in seen_members:
+                    seen_members.add(source_id)
+                    # 出徽章前先把属于旧 source 的 buffer flush 固化,
+                    # 保证徽章不会插到旧思考的中间
+                    history = _flush_reasoning(history)
+                    history = history + [render_member_badge(source_id)]
                     yield history
 
-            # ---- 思考/推理 ----
+            # ---- 思考/推理 (ReasoningContentDelta 事件) ----
             if event_type == "ReasoningContentDelta":
-                reasoning_buffer += getattr(event, "reasoning_content", "") or ""
-                yield history + [render_thinking(reasoning_buffer)]
+                delta = getattr(event, "reasoning_content", "") or ""
+                if not delta:
+                    continue
+                # source 切换 → 先固化旧 buffer, 再为新 source 开 buffer
+                if source_id and source_id != reasoning_source:
+                    history = _flush_reasoning(history)
+                    reasoning_source = source_id
+                reasoning_buffer += delta
+                yield history + [render_thinking(reasoning_buffer, member=reasoning_source)]
 
             elif event_type == "ReasoningCompleted":
-                if reasoning_buffer:
-                    ctx.tracer.thinking(reasoning_buffer)
-                    history = history + [render_thinking(reasoning_buffer)]
-                    reasoning_buffer = ""
+                # 只 flush 匹配 source 的 buffer, 防止误伤其他 member 的 in-flight 思考
+                if reasoning_buffer and source_id == reasoning_source:
+                    history = _flush_reasoning(history)
+                    yield history
 
             # ---- 工具调用开始 ----
             elif event_type == "ToolCallStarted":
-                if reasoning_buffer:
-                    ctx.tracer.thinking(reasoning_buffer)
-                    history = history + [render_thinking(reasoning_buffer)]
-                    reasoning_buffer = ""
+                # 仅当 tool 来自与当前 reasoning_source 相同的 source 时才 flush
+                # 否则让其他 member 的 reasoning buffer 继续挂着, 不被误打断
+                if reasoning_buffer and source_id == reasoning_source:
+                    history = _flush_reasoning(history)
                 tool = getattr(event, "tool", None)
                 if tool:
                     tool_name = (
@@ -135,8 +186,10 @@ async def chat_handler(
                         or getattr(tool, "function_args", None)
                     )
                     ctx.tracer.tool_invoke(tool_name, tool_args)
+                    # 标签用事件自带的 source_id (不用过时的 current_member)
+                    tool_label_source = source_id if not is_leader else None
                     yield history + [
-                        render_tool_call(tool_name, inputs=tool_args, member=current_member)
+                        render_tool_call(tool_name, inputs=tool_args, member=tool_label_source)
                     ]
 
             # ---- 工具调用完成 ----
@@ -151,39 +204,47 @@ async def chat_handler(
                         event, "content", None
                     )
                     ctx.tracer.tool_result(tool_name, tool_result)
+                    tool_label_source = source_id if not is_leader else None
                     history = history + [
-                        render_tool_call(tool_name, outputs=tool_result, member=current_member)
+                        render_tool_call(tool_name, outputs=tool_result, member=tool_label_source)
                     ]
 
-            # ---- 内容流 ----
+            # ---- 内容流 (RunContent) ----
             elif event_type == "RunContent":
-                # 本地原生思考内容 (Qwen/DeepSeek)
+                # 本地原生思考内容 (Qwen/DeepSeek 等在 content 流里夹 reasoning_content)
                 reasoning_delta = getattr(event, "reasoning_content", None)
                 if reasoning_delta:
+                    if source_id and source_id != reasoning_source:
+                        history = _flush_reasoning(history)
+                        reasoning_source = source_id
                     reasoning_buffer += reasoning_delta
-                    yield history + [render_thinking(reasoning_buffer)]
+                    yield history + [render_thinking(reasoning_buffer, member=reasoning_source)]
 
                 content_delta = getattr(event, "content", None)
-                if content_delta is not None and reasoning_buffer:
-                    ctx.tracer.thinking(reasoning_buffer)
-                    history = history + [render_thinking(reasoning_buffer)]
-                    reasoning_buffer = ""
+                # 正式 content 到来时,如果本 source 有 in-flight reasoning 先固化
+                if content_delta is not None and reasoning_buffer and source_id == reasoning_source:
+                    history = _flush_reasoning(history)
 
-                # 只有 Team leader (orchestrator) 的 content 才累积到最终回答
-                # member 的 content 已经在 tool_call 里体现
-                if content_delta and (
-                    current_member is None or current_member == ctx.team.name
-                ):
+                # 只有 Team leader (Orchestrator) 的 content 累积到最终回答;
+                # member 的 content 通过 tool_call 体现, 不重复累积。
+                if content_delta and is_leader:
                     full_content += str(content_delta)
                     yield history + [render_response(full_content)]
 
             # ---- 运行完成 ----
             elif event_type == "RunCompleted":
-                final = getattr(event, "content", None)
-                if final and str(final) != full_content:
-                    full_content = str(final)
+                # Team leader 的 RunCompleted 携带最终文本
+                if is_leader:
+                    final = getattr(event, "content", None)
+                    if final and str(final) != full_content:
+                        full_content = str(final)
 
-        # 确保最终回答被添加
+        # ---- 流结束清理 ----
+        # 残留的 reasoning buffer (例如最后一段思考没有 ReasoningCompleted) 也要固化
+        if reasoning_buffer:
+            history = _flush_reasoning(history)
+
+        # 最终回答
         if full_content:
             history = history + [render_response(full_content)]
             ctx.tracer.response(full_content)
