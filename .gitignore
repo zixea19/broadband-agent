@@ -215,3 +215,6 @@ __marimo__/
 # Fae POC 真实凭证与内部模块 — 永不提交
 fae_poc/config.ini
 fae_poc/NCELogin.py
+
+# 临时文件目录 — 从外部仓库拉取的参考代码等,不纳入版本控制
+tmp/
