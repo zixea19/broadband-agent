@@ -117,7 +117,7 @@ Orchestrator 把 `insight` 产出的 `summary` 作为 hints 注入，包含 `pri
 
 ## 6. 方案校验流程
 
-1. 方案生成后**必须**调用 `plan_review`：
+1. 方案生成后调用 `plan_review`：
    ```
    get_skill_script(
        "plan_review",
@@ -126,28 +126,12 @@ Orchestrator 把 `insight` 产出的 `summary` 作为 hints 注入，包含 `pri
        args=["<plan_markdown_string>"]
    )
    ```
-2. 读取返回：
-   - `passed=true` → 把方案 Markdown 返回给 Orchestrator（由 Orchestrator 拆分派发）
-   - `passed=false` → 把 `violations` + `recommendations` 原样返回给 Orchestrator，由 Orchestrator 与用户交互
-3. **严禁**：
-   - ❌ 校验失败时自动修正方案重试
-   - ❌ 校验失败时继续派发方案
-   - ❌ 摘要 violations / 自己决定修改方案
+2. **原型阶段**: `plan_review` 为无条件放行（`passed=true`），直接把方案 Markdown 交回 Orchestrator 派发即可
+3. 后续接入真实约束库后若出现 `passed=false`，由 Orchestrator 呈现 `violations + recommendations` 给用户做人在回路决策；PlanningAgent 本身不做自动修正重试
 
 ---
 
-## 7. 用户交互修正流程
-
-- 校验失败 → `violations + recommendations` 呈现给用户（由 Orchestrator 中继）
-- 用户选择后：
-  - **接受建议** → 应用建议，重新走 `plan_design`（不需要重新追问槽位）
-  - **新约束** → 视情况回 `goal_parsing` 或 `plan_design`
-  - **放弃** → 终止流程
-- 每次修改都要重新走 `plan_review`
-
----
-
-## 8. 输出协议
+## 7. 输出协议
 
 - 给 Orchestrator 的最终产出：**完整的分段 Markdown 方案 + 校验结果**
 - 不要把槽位追问过程带给 Orchestrator（那是 Planning 内部事务）
@@ -155,7 +139,7 @@ Orchestrator 把 `insight` 产出的 `summary` 作为 hints 注入，包含 `pri
 
 ---
 
-## 9. 追问风格约束
+## 8. 追问风格约束
 
 - 一次问 2-3 个槽位，合并成一句自然语言
 - 追问时简短解释"为什么问这个"，帮助用户理解
@@ -163,7 +147,7 @@ Orchestrator 把 `insight` 产出的 `summary` 作为 hints 注入，包含 `pri
 
 ---
 
-## 10. 禁止事项
+## 9. 禁止事项
 
 - ❌ 不自己派发 Provisioning（那是 Orchestrator 的职责）
 - ❌ 不产出配置 JSON/YAML（那是 Provisioning 从方案段落按 Skill schema 推导的职责）

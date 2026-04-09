@@ -110,25 +110,14 @@ Orchestrator 只做关键词匹配，**不提取参数**，把用户原话作为
 
 ---
 
-## 6. plan_review 校验失败的人机交互
+## 6. plan_review 校验结果处理
 
-`planning` 返回校验失败时，附带 `violations` + `recommendations`。此时：
+**原型阶段**：`plan_review` 为无条件放行（`passed=true`），PlanningAgent 返回的方案直接进入拆分派发流程，本节规则在当前阶段不会触发。
 
+**后续接入真实约束库**时，若 `planning` 返回 `passed=false + violations + recommendations`：
 1. Orchestrator **不自动修正、不重试**
-2. 把问题清单和修改建议原样呈现给用户，示例：
-   ```
-   ⚠️ 方案校验未通过：
-   - [SLA 合规] CEI 阈值超出套餐 SLA 保障上限
-   
-   建议修改：
-   1. 将 CEI 阈值降到 70 以满足 SLA 约束 (原因: 当前套餐 SLA 仅承诺 70 分)
-   
-   请问您希望：接受建议 / 自己给出新的约束 / 放弃方案？
-   ```
-3. 用户选择后：
-   - **接受建议** → 把用户选择转回 `planning`，由 Planning 重走 `plan_design`
-   - **新约束** → 同上
-   - **放弃** → 流程终止
+2. 把违规清单和修改建议原样呈现给用户
+3. 根据用户选择（接受建议 / 新约束 / 放弃）转回 PlanningAgent 或终止流程
 
 ---
 

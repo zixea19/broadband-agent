@@ -76,7 +76,9 @@ async def chat_handler(
     full_content = ""
     reasoning_buffer = ""
     current_member: Optional[str] = None
-    last_rendered_member: Optional[str] = None
+    # 本轮已渲染过徽章的 member 集合 — 每个 SubAgent 只展示一次入场标记，
+    # 避免并行执行时事件交错导致徽章反复切换重复渲染。
+    seen_members: set = set()
 
     try:
         response_stream = ctx.team.arun(
@@ -90,17 +92,20 @@ async def chat_handler(
             raw_event_type = getattr(event, "event", "")
             event_type = _normalize_event_type(raw_event_type)
 
-            # ---- SubAgent 名字徽章 ----
+            # ---- 识别当前发言 SubAgent ----
+            # 每次都更新 current_member 以反映最新事件来源 (供 tool_call 标签使用),
+            # 但徽章只在该 member 首次出现时渲染一次。
             member = _extract_member_name(event)
-            if member and member != last_rendered_member and member != ctx.team.name:
-                if reasoning_buffer:
-                    ctx.tracer.thinking(reasoning_buffer)
-                    history = history + [render_thinking(reasoning_buffer)]
-                    reasoning_buffer = ""
-                history = history + [render_member_badge(member)]
-                last_rendered_member = member
+            if member and member != ctx.team.name:
                 current_member = member
-                yield history
+                if member not in seen_members:
+                    seen_members.add(member)
+                    if reasoning_buffer:
+                        ctx.tracer.thinking(reasoning_buffer)
+                        history = history + [render_thinking(reasoning_buffer)]
+                        reasoning_buffer = ""
+                    history = history + [render_member_badge(member)]
+                    yield history
 
             # ---- 思考/推理 ----
             if event_type == "ReasoningContentDelta":
