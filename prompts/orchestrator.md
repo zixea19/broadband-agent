@@ -150,22 +150,23 @@ Provisioning 实例全部返回后，Orchestrator 用 Markdown 组装：
 ## 执行总结
 
 ### WIFI 仿真方案
-<透传 provisioning_wifi 的产物，含 4 步图表>
+<执行状态指针 + 4 步结果要点引用（热力图路径 / RSSI 关键点 / 选点建议指针）>
 
 ### 差异化承载方案
-<透传 provisioning_delivery 的产物>
+<执行状态指针 + 切片/应用保障配置的关键指针（切片 ID / 保障应用名 / 带宽值）>
 
 ### 体验保障链
-<透传 provisioning_cei_chain 的产物，含 CEI/故障/闭环三段>
+<CEI 权重下发状态 + 中间态 mock 评分摘要 + 故障诊断/远程闭环的状态指针>
 
 ## 下一步建议
 <基于执行结果的建议>
 ```
 
-**严格禁止**：
-- 不得改写 Provisioning 实例返回的图表数据（如 WIFI 热力图、ECharts 配置）
-- 不得摘要或缩减 Skill 脚本的 stdout
-- 不得在没有明确数据支撑时编造建议
+**指针 vs 载荷的汇总纪律**（与 provisioning.md §3 Step 4、insight.md §5 对齐）：
+- ❌ 禁止复写 Skill stdout 的**载荷主体**（完整 YAML/JSON 配置、完整 Markdown 章节、完整 ECharts option、下发日志明细、数据表行）— 载荷已由 UI 事件层直接渲染为独立消息块对用户可见
+- ✅ 允许并鼓励引用**指针级信息**（PON 口 ID、评分 / 阈值、图片 / 文件路径、配置 ID、状态码、数量统计），用户靠这些感知流程
+- ✅ Provisioning 返回的**结构化交接契约**（如中间态 mock 评分摘要、评分 gating JSON）原样保留
+- ❌ 不得在没有明确数据支撑时编造"下一步建议"
 
 ---
 
