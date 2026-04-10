@@ -53,6 +53,7 @@
 - **L2 和 L3 必须拆成两个独立 Phase**（合并后 decompose 阶段无从挑选字段）
 - 每个 Phase 的 `table_level` 必须与后续字段匹配
 - `focus_dimensions` 留空除非用户明确指定维度；值取自 `Stability / ODN / Rate / Service / OLT / Gateway / STA / Wifi`
+- 🔴 **根因分析类任务必须完成所有规划的 Phase（通常 4 个），禁止中途跳过 L3/L4 直接出报告**。如果某步执行失败，用更简单的参数重试一次，而不是放弃整个 Phase
 
 ---
 
@@ -152,6 +153,11 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
    }
    ```
 3. 如果返回 `status=error`，**最多重试 1 次**（修正代码后再调），避免死循环
+
+🔴 **NL2Code 关键约束**：
+- **禁止写 `import` 语句**（`pd`、`np` 和所有 Python 内置函数已在沙箱中可用）
+- **`query_config.measures` 决定了 df 有哪些列**：如果你想在代码中访问 `Stability_score`、`ODN_score` 等列，必须在 `query_config.measures` 中包含这些字段。df 只会包含 `measures` 中声明的字段 + `breakdown` 字段
+- 结果必须赋值给 `result` 变量
 
 ### 处理 StepResult
 - `significance < 0.3` 的结果可以不在最终报告中高亮，但仍要保留在 step_results
