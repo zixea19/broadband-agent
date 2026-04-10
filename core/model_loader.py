@@ -78,11 +78,16 @@ def create_model(config: Dict[str, Any] = None):
     return model
 
 
-def inject_prompt_tracer(model, prompt_callback: Callable[..., None]) -> None:
+def inject_prompt_tracer(model, prompt_callback: Callable[..., None], agent_name: str = "") -> None:
     """向已创建的 model 注入 prompt 追踪回调。
 
     使用 monkey-patch 方式重写 ainvoke_stream，在调用上游 API 前触发回调，
     记录完整的 messages + tools + tool_choice，不影响原有流式逻辑。
+
+    Args:
+        model: agno Model 实例
+        prompt_callback: 回调函数，签名 (messages, *, tools, tool_choice, agent_name)
+        agent_name: 该 model 所属的 agent 名称，用于 trace 区分来源
     """
     import types
 
@@ -94,7 +99,7 @@ def inject_prompt_tracer(model, prompt_callback: Callable[..., None]) -> None:
             # tools/tool_choice 可能作为关键字或位置参数（偏移 +2/+3，因为 messages 已单独捕获）
             tools = kwargs.get("tools") or (args[2] if len(args) >= 3 else None)
             tool_choice = kwargs.get("tool_choice") or (args[3] if len(args) >= 4 else None)
-            prompt_callback(messages, tools=tools, tool_choice=tool_choice)
+            prompt_callback(messages, tools=tools, tool_choice=tool_choice, agent_name=agent_name)
         except Exception:
             pass  # trace 失败不影响主流程
         async for chunk in original_ainvoke_stream(self, messages, *args, **kwargs):

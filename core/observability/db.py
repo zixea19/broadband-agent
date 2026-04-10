@@ -86,10 +86,12 @@ class Database:
                 conn.commit()
             except sqlite3.OperationalError:
                 pass  # 列已存在，忽略
+            # 自检：验证表存在且可写
+            tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
             conn.close()
-            logger.info("SQLite schema 初始化完成")
+            logger.info(f"SQLite schema 初始化完成: {self.db_path}, tables={tables}")
         except Exception:
-            logger.exception("SQLite schema 初始化失败")
+            logger.exception(f"SQLite schema 初始化失败: {self.db_path}")
 
     # ---- sessions ----
     def create_session(self, session_hash: str, user_agent: str = "") -> Optional[int]:
@@ -102,9 +104,10 @@ class Database:
             conn.commit()
             sid = cur.lastrowid
             conn.close()
+            logger.debug(f"create_session 成功: session_hash={session_hash[:8]}..., db_sid={sid}")
             return sid
         except Exception:
-            logger.exception("create_session 失败")
+            logger.exception(f"create_session 失败: session_hash={session_hash[:8]}..., db_path={self.db_path}")
             return None
 
     def end_session(self, session_hash: str, task_type: str = "") -> None:
@@ -142,9 +145,10 @@ class Database:
             conn.commit()
             mid = cur.lastrowid
             conn.close()
+            logger.debug(f"insert_message 成功: session_id={session_id}, role={role}, mid={mid}")
             return mid
         except Exception:
-            logger.exception("insert_message 失败")
+            logger.exception(f"insert_message 失败: session_id={session_id}, role={role}")
             return None
 
     # ---- tool_calls ----

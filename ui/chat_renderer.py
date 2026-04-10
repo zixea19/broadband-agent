@@ -139,6 +139,23 @@ def render_tool_call(
     return messages
 
 
+def render_member_content(content: str, member: Optional[str] = None) -> Dict[str, Any]:
+    """渲染 SubAgent 的文本回复内容（折叠块）。
+
+    Args:
+        content: SubAgent 生成的文本内容
+        member: SubAgent 名字（如 "insight"），用于标题显示
+    """
+    title = "📝 SubAgent 回复"
+    if member:
+        title = f"📝 [{_display_agent(member)}] 回复"
+    return {
+        "role": "assistant",
+        "metadata": {"title": title},
+        "content": content,
+    }
+
+
 def render_response(content: str) -> Dict[str, Any]:
     """渲染最终回答。"""
     return {

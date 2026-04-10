@@ -50,16 +50,17 @@ class SessionManager:
         tracer = Tracer(session_hash, db_session_id=db_sid)
         try:
             if getattr(team, "model", None) is not None:
-                inject_prompt_tracer(team.model, tracer.llm_prompt)
+                inject_prompt_tracer(team.model, tracer.llm_prompt, agent_name="orchestrator")
         except Exception:
             logger.warning("inject_prompt_tracer 失败 (team leader)")
 
         for member in getattr(team, "members", []) or []:
+            member_name = getattr(member, "name", "unknown")
             try:
                 if getattr(member, "model", None) is not None:
-                    inject_prompt_tracer(member.model, tracer.llm_prompt)
+                    inject_prompt_tracer(member.model, tracer.llm_prompt, agent_name=member_name)
             except Exception:
-                logger.warning(f"inject_prompt_tracer 失败 (member={getattr(member, 'name', '?')})")
+                logger.warning(f"inject_prompt_tracer 失败 (member={member_name})")
 
         ctx = SessionContext(
             session_hash=session_hash,
