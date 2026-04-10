@@ -16,7 +16,7 @@
 输出（stdout）：JSON 字符串，形如
     {
         "status": "ok" | "error",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "result": {type: ..., ...},  // 序列化后的 result
         "description": "NL2Code 分析完成: ...",
@@ -41,10 +41,10 @@ try:
 except ImportError as exc:
     print(json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
 
 
@@ -148,7 +148,7 @@ def run(payload_json: str) -> str:
 
     output = {
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "result": serialized,
         "description": description,
@@ -156,7 +156,7 @@ def run(payload_json: str) -> str:
         "data_shape": list(df.shape),
         "code": code,
     }
-    return json.dumps(output, ensure_ascii=False, default=_json_default)
+    return json.dumps(output, ensure_ascii=True, default=_json_default)
 
 
 def _build_description(serialized: dict[str, Any], code_prompt: str) -> str:
@@ -177,11 +177,11 @@ def _build_description(serialized: dict[str, Any], code_prompt: str) -> str:
 def _err(msg: str, code: str = "") -> str:
     return json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "error": msg,
         "code": code,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _json_default(obj: Any) -> Any:

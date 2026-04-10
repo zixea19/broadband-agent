@@ -13,7 +13,7 @@
 输出（stdout）：JSON 字符串，形如
     {
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_decompose",
         "op": "list_schema",
         "table": "day",
         "focus_dimensions": [...],
@@ -32,10 +32,10 @@ try:
 except ImportError as exc:
     print(json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_decompose",
         "op": "list_schema",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
 
 
@@ -99,22 +99,22 @@ def run(payload_json: str) -> str:
 
     return json.dumps({
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_decompose",
         "op": "list_schema",
         "table": table,
         "focus_dimensions": focus,
         "schema_markdown": schema_md,
         "all_fields": all_fields,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _err(msg: str) -> str:
     return json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_decompose",
         "op": "list_schema",
         "error": msg,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 if __name__ == "__main__":

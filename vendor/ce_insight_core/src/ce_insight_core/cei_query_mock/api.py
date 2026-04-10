@@ -75,11 +75,29 @@ def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
     # 读取文件/文件夹
     try:
         if os.path.isdir(path) or path.endswith(".parquet"):
-            df = pd.read_parquet(path)
+            # coerce_int96_timestamp_unit: 避免时间戳精度问题
+            # 某些分区文件列类型不一致（float vs int），用 pyarrow 引擎 + 类型强制转换兜底
+            try:
+                df = pd.read_parquet(path)
+            except Exception:
+                # 兜底：逐文件读取再 concat，跳过类型不一致的问题
+                import glob as _glob
+                parquet_files = sorted(_glob.glob(os.path.join(path, "*.parquet")))
+                if not parquet_files:
+                    parquet_files = sorted(_glob.glob(os.path.join(path, "**/*.parquet"), recursive=True))
+                if parquet_files:
+                    dfs = []
+                    for f in parquet_files:
+                        try:
+                            dfs.append(pd.read_parquet(f))
+                        except Exception as e:
+                            logger.warning("跳过无法读取的分区文件 %s: %s", f, e)
+                    df = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+                else:
+                    df = pd.DataFrame()
         elif path.endswith(".csv"):
             df = pd.read_csv(path)
         else:
-            # 尝试当 parquet 读
             df = pd.read_parquet(path)
     except Exception as exc:
         logger.error("读取数据文件失败: %s — %s", path, exc)

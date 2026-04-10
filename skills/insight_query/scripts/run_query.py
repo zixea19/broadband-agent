@@ -11,7 +11,7 @@
 输出（stdout）：JSON 字符串，形如
     {
         "status": "ok" | "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_query",
         "fixed_query_config": {...},
         "fix_warnings": [...],
@@ -35,13 +35,13 @@ try:
 except ImportError as exc:
     print(json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_query",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
 
-_MAX_RECORDS = 50
+_MAX_RECORDS = 15
 
 
 def _safe_parse_json(raw: str) -> dict:
@@ -152,7 +152,7 @@ def run(payload_json: str) -> str:
 def _ok(**kwargs: Any) -> str:
     result: dict[str, Any] = {
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_query",
     }
     # 重命名内部 key → 对外 key，保持输出稳定
@@ -161,16 +161,16 @@ def _ok(**kwargs: Any) -> str:
     if "shape" in kwargs:
         result["data_shape"] = kwargs.pop("shape")
     result.update(kwargs)
-    return json.dumps(result, ensure_ascii=False, default=_json_default)
+    return json.dumps(result, ensure_ascii=True, default=_json_default)
 
 
 def _err(msg: str) -> str:
     return json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_query",
         "error": msg,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _json_default(obj: Any) -> Any:

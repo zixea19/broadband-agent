@@ -93,45 +93,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         print(render(sys.argv[1]))
     else:
-        sample = json.dumps(
-            {
-                "title": "网络质量数据洞察报告（示例 · 多阶段）",
-                "goal": "找出 CEI 分数较低的 PON 口并分析原因",
-                "summary": {
-                    "priority_pons": ["port_4", "port_5"],
-                    "priority_gateways": [],
-                    "distinct_issues": ["ODN 光功率异常"],
-                    "scope_indicator": "multi_pon",
-                    "peak_time_window": "19:00-22:00",
-                    "has_complaints": True,
-                    "remote_loop_candidates": ["port_4"],
-                    "root_cause_fields": ["oltRxPowerHighCnt"],
-                },
-                "phases": [
-                    {
-                        "phase_id": 1,
-                        "name": "定位低分 PON 口",
-                        "milestone": "找出 CEI 最低的 PON 口",
-                        "table_level": "day",
-                        "steps": [
-                            {
-                                "step_id": 1,
-                                "insight_type": "OutstandingMin",
-                                "significance": 0.73,
-                                "description": {"summary": "CEI_score 最小出现在 port_4"},
-                                "rationale": "定位低分设备",
-                                "found_entities": {"portUuid": ["port_4", "port_5"]},
-                                "fix_warnings": [],
-                            }
-                        ],
-                        "reflection": {
-                            "choice": "A",
-                            "reason": "符合预期，继续下一阶段",
-                        },
-                    }
-                ],
-                "conclusion": "主要问题集中在 ODN 光功率。",
-            },
-            ensure_ascii=False,
-        )
-        print(render(sample))
+        print(render("{}"))

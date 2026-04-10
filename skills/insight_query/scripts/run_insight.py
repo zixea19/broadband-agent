@@ -16,7 +16,7 @@
 输出（stdout）：JSON 字符串，形如
     {
         "status": "ok" | "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "insight_type": "...",
         "significance": 0.0-1.0,
@@ -42,13 +42,13 @@ try:
 except ImportError as exc:
     print(json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
 
-_MAX_RECORDS = 50
+_MAX_RECORDS = 15
 
 
 def _safe_parse_json(raw: str) -> dict:
@@ -194,7 +194,7 @@ def run(payload_json: str) -> str:
     filter_data = result.get("filter_data", [])[:_MAX_RECORDS]
     output = {
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "insight_type": result.get("insight_type", insight_type),
         "significance": result.get("significance", 0.0),
@@ -207,7 +207,7 @@ def run(payload_json: str) -> str:
         "value_columns_used": value_columns,
         "group_column_used": group_column,
     }
-    return json.dumps(output, ensure_ascii=False, default=_json_default)
+    return json.dumps(output, ensure_ascii=True, default=_json_default)
 
 
 def _resolve_columns(df: Any, cols: list[str]) -> list[str]:
@@ -241,10 +241,10 @@ def _extract_entities(df: Any, group_column: str, filter_data: list[dict]) -> di
 def _err(msg: str) -> str:
     return json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "error": msg,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _json_default(obj: Any) -> Any:
