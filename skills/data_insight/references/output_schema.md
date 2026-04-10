@@ -1,7 +1,138 @@
 # 数据洞察 Skills 输出数据契约
 
-> 供前端开发参考：每个脚本通过 stdout 输出 JSON，agno 框架将其包装在 ToolCallCompleted 事件中推送给前端。
-> 前端可通过 `tool_name`（脚本名）区分不同阶段的数据。
+> 供前端开发参考。数据洞察流程有两类输出通道：
+> 1. **脚本 stdout**：通过 agno ToolCallCompleted 事件推送，包含查询结果、洞察分析、ECharts 图表
+> 2. **InsightAgent assistant 文本**：包含阶段事件标记（`<!--event:xxx-->`），用于渲染流程进度和最终报告
+
+---
+
+## 端到端事件流（按时间顺序）
+
+前端从 InsightAgent 的 assistant 文本中解析 `<!--event:xxx-->` 标记，获取流程级事件：
+
+```
+用户输入 "分析PON口CEI下降原因"
+  ↓
+<!--event:plan-->              ← 阶段规划（含所有 Phase 概览）
+  ↓
+for each Phase:
+  ├─ <!--event:phase_start-->  ← Phase 开始
+  ├─ [ToolCall] run_insight.py / run_nl2code.py  ← 脚本执行（1-8 次）
+  ├─ <!--event:step_result-->  ← 每个 Step 执行后的精简摘要（1-8 次）
+  └─ <!--event:reflect-->      ← Phase 结束反思决策
+  ↓
+<!--event:report-->            ← 完整报告（含所有 Phase 的 Steps + Charts + Summary）
+<!--event:done-->              ← 流程结束信号
+```
+
+### event:plan — 阶段规划
+```json
+<!--event:plan-->
+{
+  "goal": "找出 CEI 分数较低的 PON 口并分析原因",
+  "total_phases": 4,
+  "phases": [
+    {"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day"},
+    {"phase_id": 2, "name": "L2-维度归因扫描", "milestone": "确定哪个维度拖分", "table_level": "day"},
+    {"phase_id": 3, "name": "L3-根因指标定位", "milestone": "找到维度内具体异常指标", "table_level": "day"},
+    {"phase_id": 4, "name": "L4-时序下钻验证", "milestone": "验证根因指标时序分布", "table_level": "minute"}
+  ]
+}
+```
+**前端渲染**：展示分析阶段概览（如步骤条/时间线），让用户知道接下来要做什么。
+
+### event:phase_start — Phase 开始
+```json
+<!--event:phase_start-->
+{"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "status": "running"}
+```
+**前端渲染**：高亮当前执行的 Phase（步骤条进度更新）。
+
+### event:step_result — Step 执行结果摘要
+```json
+<!--event:step_result-->
+{
+  "phase_id": 1,
+  "step_id": 1,
+  "insight_type": "OutstandingMin",
+  "significance": 0.73,
+  "summary": "CEI_score 最小值出现在 288b6c71-...（54.08），z-score=5.36",
+  "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}
+}
+```
+**前端渲染**：步骤卡片（标题=insight_type，正文=summary，标签=significance）。
+**注意**：完整的 `chart_configs` 和 `filter_data` 在对应的 ToolCallCompleted 事件的脚本 stdout 里（`op: "run_insight"`），前端需要关联 `phase_id + step_id` 来匹配。
+
+### event:reflect — Phase 反思决策
+```json
+<!--event:reflect-->
+{"phase_id": 1, "choice": "A", "reason": "成功识别低分PON口，按原计划进入Phase 2", "next_phase": 2}
+```
+| choice | 含义 |
+|---|---|
+| A | 继续原计划 |
+| B | 修改下一 Phase |
+| C | 插入新 Phase |
+| D | 跳过后续 Phase |
+
+**前端渲染**：Phase 完成标记 + 反思结果标签。
+
+### event:report — 完整报告
+```json
+<!--event:report-->
+{
+  "title": "CEI 低分 PON 口根因分析报告",
+  "goal": "找出 CEI 分数较低的 PON 口并分析原因",
+  "phases": [
+    {
+      "phase_id": 1,
+      "name": "L1-定位低分PON口",
+      "milestone": "识别CEI最低的PON口列表",
+      "table_level": "day",
+      "steps": [
+        {
+          "step_id": 1,
+          "insight_type": "OutstandingMin",
+          "significance": 0.73,
+          "summary": "CEI_score 最小值出现在 288b6c71-...（54.08），z-score=5.36",
+          "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]},
+          "chart_configs": { "chart_type": "bar", ... }
+        }
+      ],
+      "reflection": {"choice": "A", "reason": "..."}
+    }
+  ],
+  "summary": {
+    "goal": "找出 CEI 分数较低的 PON 口并分析原因",
+    "priority_pons": ["uuid-a", "uuid-b"],
+    "priority_gateways": [],
+    "distinct_issues": ["Rate_score 极低", "Service_score 偏低"],
+    "scope_indicator": "multi_pon",
+    "peak_time_window": null,
+    "has_complaints": false,
+    "remote_loop_candidates": [],
+    "root_cause_fields": ["rxTrafficPercent", "meanRxRatePercent"],
+    "reflection_log": [
+      {"phase": 1, "choice": "A", "reason": "..."},
+      {"phase": 2, "choice": "A", "reason": "..."}
+    ]
+  }
+}
+```
+**前端渲染**：完整的多阶段报告页面（每个 Phase 一个区块，每个 Step 一个卡片 + ECharts 图表）。
+
+### event:done — 流程结束
+```json
+<!--event:done-->
+{"total_phases": 4, "total_steps": 12, "total_charts": 8}
+```
+**前端渲染**：进度条完成 + 统计摘要。
+
+---
+
+## 脚本 stdout 输出格式（通过 ToolCallCompleted 事件推送）
+
+以下是每个脚本通过 stdout 输出的 JSON 格式。前端通过 JSON 中的 `op` 字段区分来源。
 
 ---
 
