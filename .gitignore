@@ -215,3 +215,6 @@ __marimo__/
 # Fae POC 真实凭证与内部模块 — 永不提交
 fae_poc/config.ini
 fae_poc/NCELogin.py
+
+# 本地工作目录 — 存放 ce-insight-2.0 upstream clone 等参考源码,不纳入版本控制
+tmp/
