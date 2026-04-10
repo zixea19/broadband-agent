@@ -41,30 +41,14 @@
    - **根因分析**（"分析原因" / "为什么"）→ 4 个 Phase，严格 L1→L2→L3→L4
    - **指定维度**（"WiFi 差" / "光路问题"）→ 2 个 Phase，跳过 L1/L2 直接 L3→L4
    - **指定设备**（用户给了 portUuid / gatewayMac）→ 3 个 Phase，跳过 L1
-2. 在你的思考中保留 MacroPlan JSON：
-   ```json
-   {
-     "goal": "...",
-     "phases": [
-       {"phase_id": 1, "name": "...", "milestone": "...", "table_level": "day", "description": "...", "focus_dimensions": []}
-     ]
-   }
+2. 🔴 **必须**在 assistant 消息中输出 MacroPlan JSON（前端需要渲染阶段概览）。格式如下：
+
    ```
-3. **必须**在 assistant 消息中输出 MacroPlan，让前端渲染阶段概览：
-   ```json
    <!--event:plan-->
-   {
-     "goal": "用户意图的一句话摘要",
-     "total_phases": 4,
-     "phases": [
-       {"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day"},
-       {"phase_id": 2, "name": "L2-维度归因扫描", "milestone": "确定哪个维度拖分", "table_level": "day"},
-       {"phase_id": 3, "name": "L3-根因指标定位", "milestone": "找到维度内具体异常指标", "table_level": "day"},
-       {"phase_id": 4, "name": "L4-时序下钻验证", "milestone": "验证根因指标时序分布", "table_level": "minute"}
-     ]
-   }
+   {"goal": "用户意图摘要", "total_phases": 4, "phases": [{"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "description": "...", "focus_dimensions": []}, ...]}
    ```
-   前端通过 `<!--event:plan-->` 标记识别这是阶段规划数据。
+
+   **先输出这段 JSON，再开始执行 Phase 1。不要跳过这一步。**
 
 ### 加载参考文件的时机
 - 用户问题**明确是根因分析 / 指定维度 / 指定设备**时 → 加载 `plan_fewshots.md`
@@ -166,27 +150,29 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
 
 🔴 **切记**：`dimensions` 格式错误是最常见的导致下钻失效的原因。如果你看到返回的 `data_shape` 行数跟全量数据一样多（如 3857 行），说明过滤没有生效，请检查 dimensions 格式。
 
-### 前端事件输出（每个 Phase 和 Step 必须输出）
+### 🔴 前端事件输出（强制，不可跳过）
 
-**Phase 开始时**，在 assistant 消息中输出：
-```json
+以下 3 种事件**必须**在 assistant 消息中输出，前端依赖这些标记做渲染。
+
+**1) 每个 Phase 开始前，输出 phase_start：**
+```
 <!--event:phase_start-->
 {"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "status": "running"}
 ```
 
-**每个 Step 执行完后**，在 assistant 消息中输出步骤摘要（脚本 stdout 已通过 tool call 展示，这里只输出精简版供前端渲染步骤卡片）：
-```json
+**2) 每个 Step 的脚本调用完成后，输出 step_result：**
+```
 <!--event:step_result-->
-{"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08），z-score=5.36", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}}
+{"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}}
 ```
 
-**Phase 结束时**，在 assistant 消息中输出反思决策：
-```json
+**3) 每个 Phase 所有 Step 执行完后，输出 reflect：**
+```
 <!--event:reflect-->
 {"phase_id": 1, "choice": "A", "reason": "成功识别低分PON口，按原计划进入Phase 2", "next_phase": 2}
 ```
 
-前端通过 `<!--event:xxx-->` 标记识别事件类型并做对应渲染。
+**执行顺序**：`phase_start` → 调脚本 → `step_result` → ... → `reflect` → 下一个 Phase 的 `phase_start` → ...
 
 ### 每步的调用模式
 
