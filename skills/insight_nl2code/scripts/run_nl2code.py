@@ -16,7 +16,7 @@
 输出（stdout）：JSON 字符串，形如
     {
         "status": "ok" | "error",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "result": {type: ..., ...},  // 序列化后的 result
         "description": "NL2Code 分析完成: ...",
@@ -30,7 +30,9 @@
 """
 
 import json
+import re
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -39,17 +41,65 @@ try:
 except ImportError as exc:
     print(json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
+
+
+def _safe_parse_json(raw: str) -> dict:
+    """带修复的 JSON 解析：先直接解析，失败则尝试修复常见 shell 转义损坏后重试。"""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    stripped = raw.strip()
+    if stripped.startswith("'") and stripped.endswith("'"):
+        stripped = stripped[1:-1]
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', raw)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+    try:
+        from json_repair import repair_json
+        return json.loads(repair_json(raw, return_objects=False))
+    except (ImportError, Exception):
+        pass
+    if not sys.stdin.isatty():
+        try:
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                return json.loads(stdin_data)
+        except Exception:
+            pass
+    return json.loads(raw)
+
+
+def _resolve_data_path(table_level: str) -> str:
+    """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
+    try:
+        import yaml
+        config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            key = "minute_table_path" if table_level == "minute" else "day_table_path"
+            return cfg.get(key, "mock") or "mock"
+    except Exception:
+        pass
+    return "mock"
 
 
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 查询 → 沙箱执行代码 → 序列化 result。"""
     try:
-        payload: dict[str, Any] = json.loads(payload_json)
+        payload: dict[str, Any] = _safe_parse_json(payload_json)
     except json.JSONDecodeError as exc:
         return _err(f"payload JSON 解析失败: {exc}", code="")
 
@@ -65,7 +115,7 @@ def run(payload_json: str) -> str:
     if table_level not in ("day", "minute"):
         return _err(f"table_level 必须是 day/minute，收到: {table_level}", code=code)
 
-    data_path = payload.get("data_path", "mock")
+    data_path = payload.get("data_path") or _resolve_data_path(table_level)
     code_prompt = payload.get("code_prompt", "")
 
     # 1. 修复 + 查询
@@ -98,7 +148,7 @@ def run(payload_json: str) -> str:
 
     output = {
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "result": serialized,
         "description": description,
@@ -106,7 +156,7 @@ def run(payload_json: str) -> str:
         "data_shape": list(df.shape),
         "code": code,
     }
-    return json.dumps(output, ensure_ascii=False, default=_json_default)
+    return json.dumps(output, ensure_ascii=True, default=_json_default)
 
 
 def _build_description(serialized: dict[str, Any], code_prompt: str) -> str:
@@ -127,11 +177,11 @@ def _build_description(serialized: dict[str, Any], code_prompt: str) -> str:
 def _err(msg: str, code: str = "") -> str:
     return json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_nl2code",
         "op": "run_nl2code",
         "error": msg,
         "code": code,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _json_default(obj: Any) -> Any:

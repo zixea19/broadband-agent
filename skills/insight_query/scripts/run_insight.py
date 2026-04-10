@@ -16,7 +16,7 @@
 输出（stdout）：JSON 字符串，形如
     {
         "status": "ok" | "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "insight_type": "...",
         "significance": 0.0-1.0,
@@ -32,7 +32,9 @@
 """
 
 import json
+import re
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -40,19 +42,91 @@ try:
 except ImportError as exc:
     print(json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
 
-_MAX_RECORDS = 50
+_MAX_RECORDS = 15
+
+
+def _safe_parse_json(raw: str) -> dict:
+    """带修复的 JSON 解析：先直接解析，失败则尝试修复常见 shell 转义损坏后重试。
+
+    agno 的 get_skill_script 在 Windows 上把 JSON 作为命令行参数传递时，
+    嵌套引号可能被 shell 吃掉或替换。本函数尝试以下修复：
+    1. 去除首尾可能残留的单引号包裹
+    2. 把被 shell 替换成单引号的双引号恢复
+    3. 修复 Windows cmd 吃掉双引号后的裸键值（key: value → "key": "value"）
+    4. 用 json_repair 库兜底（如果可用）
+    """
+    # 第 0 层：直接解析
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # 第 1 层：去除首尾单引号包裹
+    stripped = raw.strip()
+    if stripped.startswith("'") and stripped.endswith("'"):
+        stripped = stripped[1:-1]
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+
+    # 第 2 层：Windows cmd 有时会吃掉 \" 变成空，尝试修复常见模式
+    # 例如 {insight_type: OutstandingMin} → {"insight_type": "OutstandingMin"}
+    repaired = raw
+    # 修复未加引号的键名
+    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', repaired)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # 第 3 层：尝试 json_repair 库（pip install json-repair）
+    try:
+        from json_repair import repair_json
+        repaired_str = repair_json(raw, return_objects=False)
+        return json.loads(repaired_str)
+    except (ImportError, Exception):
+        pass
+
+    # 第 4 层：尝试读取 stdin（如果 argv 解析失败，agno 可能通过 stdin 传数据）
+    if not sys.stdin.isatty():
+        try:
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                return json.loads(stdin_data)
+        except Exception:
+            pass
+
+    # 全部失败，抛出原始错误
+    return json.loads(raw)  # 会抛 JSONDecodeError
+
+
+def _resolve_data_path(table_level: str) -> str:
+    """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
+    try:
+        import yaml
+        config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            key = "minute_table_path" if table_level == "minute" else "day_table_path"
+            path = cfg.get(key, "mock") or "mock"
+            return path
+    except Exception:
+        pass
+    return "mock"
 
 
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 查询 → 执行洞察 → 序列化。"""
     try:
-        payload: dict[str, Any] = json.loads(payload_json)
+        payload: dict[str, Any] = _safe_parse_json(payload_json)
     except json.JSONDecodeError as exc:
         return _err(f"payload JSON 解析失败: {exc}")
 
@@ -68,7 +142,7 @@ def run(payload_json: str) -> str:
     if table_level not in ("day", "minute"):
         return _err(f"table_level 必须是 day/minute，收到: {table_level}")
 
-    data_path = payload.get("data_path", "mock")
+    data_path = payload.get("data_path") or _resolve_data_path(table_level)
 
     # 从三元组推导默认的 value_columns / group_column
     default_value_cols = [m.get("name") for m in query_config.get("measures", []) if m.get("name")]
@@ -120,7 +194,7 @@ def run(payload_json: str) -> str:
     filter_data = result.get("filter_data", [])[:_MAX_RECORDS]
     output = {
         "status": "ok",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "insight_type": result.get("insight_type", insight_type),
         "significance": result.get("significance", 0.0),
@@ -133,7 +207,7 @@ def run(payload_json: str) -> str:
         "value_columns_used": value_columns,
         "group_column_used": group_column,
     }
-    return json.dumps(output, ensure_ascii=False, default=_json_default)
+    return json.dumps(output, ensure_ascii=True, default=_json_default)
 
 
 def _resolve_columns(df: Any, cols: list[str]) -> list[str]:
@@ -167,10 +241,10 @@ def _extract_entities(df: Any, group_column: str, filter_data: list[dict]) -> di
 def _err(msg: str) -> str:
     return json.dumps({
         "status": "error",
-        "skill": "data_insight",
+        "skill": "insight_query",
         "op": "run_insight",
         "error": msg,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _json_default(obj: Any) -> Any:
