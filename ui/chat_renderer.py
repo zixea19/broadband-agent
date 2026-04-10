@@ -80,11 +80,21 @@ def render_tool_call(
     stdout_is_markdown = False
 
     if outputs is not None:
-        if isinstance(outputs, dict) and "stdout" in outputs:
-            script_path = outputs.get("script_path", "")
-            returncode = outputs.get("returncode", 0)
-            stdout = (outputs.get("stdout") or "").strip()
-            stderr = (outputs.get("stderr") or "").strip()
+        # agno 在不同版本下可能把 Skill 脚本返回值序列化为 JSON 字符串后
+        # 再放入 ToolCallCompleted.tool.result,这里统一先尝试解析成 dict,
+        # 避免走到下面的 "返回结果" 兜底分支、丢失 skill 格式拆分能力。
+        parsed = outputs
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except (json.JSONDecodeError, TypeError):
+                pass  # 非 JSON 字符串,保持原样交给兜底分支展示
+
+        if isinstance(parsed, dict) and "stdout" in parsed:
+            script_path = parsed.get("script_path", "")
+            returncode = parsed.get("returncode", 0)
+            stdout = (parsed.get("stdout") or "").strip()
+            stderr = (parsed.get("stderr") or "").strip()
             status = "✅" if returncode == 0 else "❌"
             meta_parts.append(f"{status} `{script_path}` (returncode={returncode})")
             if stderr:

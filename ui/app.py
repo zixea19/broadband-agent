@@ -200,13 +200,23 @@ async def chat_handler(
                         getattr(tool, "tool_name", "")
                         or getattr(tool, "function_name", "unknown")
                     )
+                    # 同步取出 tool_args,让持久化的 Completed 块同时含入参 + 执行
+                    # 结果 + 产物 — ToolCallStarted 的 yield 是 transient 的,
+                    # 入参块不会留在 history 里,必须在 Completed 阶段一起渲染。
+                    tool_args = (
+                        getattr(tool, "tool_args", None)
+                        or getattr(tool, "function_args", None)
+                    )
                     tool_result = getattr(tool, "result", None) or getattr(
                         event, "content", None
                     )
                     ctx.tracer.tool_result(tool_name, tool_result)
                     tool_label_source = source_id if not is_leader else None
                     history = history + render_tool_call(
-                        tool_name, outputs=tool_result, member=tool_label_source
+                        tool_name,
+                        inputs=tool_args,
+                        outputs=tool_result,
+                        member=tool_label_source,
                     )
 
             # ---- 内容流 (RunContent) ----

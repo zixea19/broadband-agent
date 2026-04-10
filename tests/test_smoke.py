@@ -869,6 +869,61 @@ def test_render_tool_call_completed_failure_no_stdout_single_block():
     assert "FAE connection refused" in msgs[0]["content"]
 
 
+def test_render_tool_call_completed_parses_json_string_output():
+    """回归: agno 可能把 Skill 脚本返回值序列化为 JSON 字符串后再放入
+    ToolCallCompleted.tool.result。此时仍应走 Skill 格式路径拆分,不能退化为
+    '返回结果: { 全量 dict }' 的兜底展示。"""
+    import json as _json
+    from ui.chat_renderer import render_tool_call
+
+    outputs_str = _json.dumps(
+        {
+            "skill_name": "cei_pipeline",
+            "script_path": "cei_threshold_config.py",
+            "stdout": "CEI 权重配置下发成功 config_id=CEI-12345",
+            "stderr": "InsecureRequestWarning: ...",
+            "returncode": 0,
+        }
+    )
+    msgs = render_tool_call("cei_pipeline", outputs=outputs_str)
+    # 拆分为折叠审计块 + 展开产物块两条
+    assert len(msgs) == 2
+    # 折叠块含 script_path + returncode + stderr,**不是** 整个 dict 的 '返回结果' 兜底
+    assert "cei_threshold_config.py" in msgs[0]["content"]
+    assert "returncode=0" in msgs[0]["content"]
+    assert "**返回结果**" not in msgs[0]["content"]
+    assert "InsecureRequestWarning" in msgs[0]["content"]  # stderr 正确抽取
+    # 展开块只含 stdout 正文
+    assert "metadata" not in msgs[1]
+    assert "config_id=CEI-12345" in msgs[1]["content"]
+
+
+def test_render_tool_call_completed_with_both_inputs_and_outputs():
+    """app.py 的 ToolCallCompleted 分支会同时传 inputs + outputs,让持久化块
+    含入参解释 + 执行状态 + 展开产物。"""
+    from ui.chat_renderer import render_tool_call
+
+    msgs = render_tool_call(
+        "cei_pipeline",
+        inputs={"weights": "ServiceQualityWeight:40"},
+        outputs={
+            "script_path": "cei_threshold_config.py",
+            "stdout": "ok",
+            "stderr": "",
+            "returncode": 0,
+        },
+    )
+    assert len(msgs) == 2
+    # 折叠审计块里应同时有 **输入参数** + 执行状态
+    assert "**输入参数**" in msgs[0]["content"]
+    assert "ServiceQualityWeight:40" in msgs[0]["content"]
+    assert "✅" in msgs[0]["content"]
+    assert "returncode=0" in msgs[0]["content"]
+    # 展开块是 stdout 正文
+    assert "metadata" not in msgs[1]
+    assert "ok" in msgs[1]["content"]
+
+
 def test_render_tool_call_completed_non_skill_output_single_block():
     """非 Skill 脚本返回 (无 stdout 键) → 单条折叠块包裹 JSON。"""
     from ui.chat_renderer import render_tool_call
