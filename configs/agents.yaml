@@ -28,10 +28,14 @@ agents:
 
   insight:
     prompt: prompts/insight.md
-    description: "数据洞察分析师：按 4 阶段产出数据 + ECharts 图表 + 归因分析报告"
+    description: "数据洞察分析师：按 Plan→Decompose→Execute→Reflect→Report 五阶段产出数据洞察报告"
     skills:
-      - data_insight
-      - report_rendering
+      - insight_plan
+      - insight_decompose
+      - insight_query
+      - insight_nl2code
+      - insight_reflect
+      - insight_report
     memory:
       max_turns: 10
 
