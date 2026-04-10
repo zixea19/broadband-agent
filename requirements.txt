@@ -9,6 +9,7 @@ loguru>=0.7.0
 pyyaml>=6.0
 jinja2>=3.0
 aiofiles>=23.0
+sqlalchemy>=2.0
 
 # data_insight 依赖（科学计算栈 + 沙箱）— 由本地 wheel ce_insight_core 拉起
 pandas>=2.0
