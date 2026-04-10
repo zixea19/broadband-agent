@@ -32,6 +32,7 @@
 """
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -49,10 +50,66 @@ except ImportError as exc:
 _MAX_RECORDS = 50
 
 
+def _safe_parse_json(raw: str) -> dict:
+    """带修复的 JSON 解析：先直接解析，失败则尝试修复常见 shell 转义损坏后重试。
+
+    agno 的 get_skill_script 在 Windows 上把 JSON 作为命令行参数传递时，
+    嵌套引号可能被 shell 吃掉或替换。本函数尝试以下修复：
+    1. 去除首尾可能残留的单引号包裹
+    2. 把被 shell 替换成单引号的双引号恢复
+    3. 修复 Windows cmd 吃掉双引号后的裸键值（key: value → "key": "value"）
+    4. 用 json_repair 库兜底（如果可用）
+    """
+    # 第 0 层：直接解析
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # 第 1 层：去除首尾单引号包裹
+    stripped = raw.strip()
+    if stripped.startswith("'") and stripped.endswith("'"):
+        stripped = stripped[1:-1]
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+
+    # 第 2 层：Windows cmd 有时会吃掉 \" 变成空，尝试修复常见模式
+    # 例如 {insight_type: OutstandingMin} → {"insight_type": "OutstandingMin"}
+    repaired = raw
+    # 修复未加引号的键名
+    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', repaired)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+
+    # 第 3 层：尝试 json_repair 库（pip install json-repair）
+    try:
+        from json_repair import repair_json
+        repaired_str = repair_json(raw, return_objects=False)
+        return json.loads(repaired_str)
+    except (ImportError, Exception):
+        pass
+
+    # 第 4 层：尝试读取 stdin（如果 argv 解析失败，agno 可能通过 stdin 传数据）
+    if not sys.stdin.isatty():
+        try:
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                return json.loads(stdin_data)
+        except Exception:
+            pass
+
+    # 全部失败，抛出原始错误
+    return json.loads(raw)  # 会抛 JSONDecodeError
+
+
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 查询 → 执行洞察 → 序列化。"""
     try:
-        payload: dict[str, Any] = json.loads(payload_json)
+        payload: dict[str, Any] = _safe_parse_json(payload_json)
     except json.JSONDecodeError as exc:
         return _err(f"payload JSON 解析失败: {exc}")
 

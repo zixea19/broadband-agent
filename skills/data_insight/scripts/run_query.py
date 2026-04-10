@@ -25,6 +25,7 @@
 """
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -42,10 +43,43 @@ except ImportError as exc:
 _MAX_RECORDS = 50
 
 
+def _safe_parse_json(raw: str) -> dict:
+    """带修复的 JSON 解析：先直接解析，失败则尝试修复常见 shell 转义损坏后重试。"""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    stripped = raw.strip()
+    if stripped.startswith("'") and stripped.endswith("'"):
+        stripped = stripped[1:-1]
+        try:
+            return json.loads(stripped)
+        except json.JSONDecodeError:
+            pass
+    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', raw)
+    try:
+        return json.loads(repaired)
+    except json.JSONDecodeError:
+        pass
+    try:
+        from json_repair import repair_json
+        return json.loads(repair_json(raw, return_objects=False))
+    except (ImportError, Exception):
+        pass
+    if not sys.stdin.isatty():
+        try:
+            stdin_data = sys.stdin.read().strip()
+            if stdin_data:
+                return json.loads(stdin_data)
+        except Exception:
+            pass
+    return json.loads(raw)
+
+
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 修复三元组 → 查询 → 序列化结果。"""
     try:
-        payload: dict[str, Any] = json.loads(payload_json)
+        payload: dict[str, Any] = _safe_parse_json(payload_json)
     except json.JSONDecodeError as exc:
         return _err(f"payload JSON 解析失败: {exc}")
 
