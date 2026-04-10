@@ -7,8 +7,8 @@
 支持三类任务入口：
 
 1. **综合目标** — 用户描述业务目标，PlanningAgent 追问画像 → 产出分段方案 → 并行派发多个 Provisioning 实例执行
-2. **数据洞察** — InsightAgent 按 4 阶段产出数据 / 归因 / ECharts 图表 / Markdown 报告，结果可回流 Planning 生成优化方案
-3. **单点功能** — Orchestrator 关键词路由直达对应 Provisioning 实例（WIFI 仿真 / 差异化承载 / 故障定界 / 远程操作）
+2. **数据洞察** — InsightAgent 按 Plan → Decompose → Execute → Reflect → Report 五阶段产出数据 / 归因 / ECharts 图表 / Markdown 报告，结果可回流 Planning 生成优化方案
+3. **单点功能** — Orchestrator 关键词路由直达对应 Provisioning 实例（WIFI 仿真 / 差异化承载 / 故障定界 / 远程操作 / CEI 权重配置）
 
 ## 架构
 
@@ -30,34 +30,59 @@ OrchestratorTeam (leader, coordinate 模式)
 - **`cei_pipeline / remote_optimization`**：Tool Wrapper 范式 — 封装 FAE 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini
 - **`fault_diagnosis / differentiated_delivery`**：Generator 范式 — SKILL.md 声明参数 schema，Jinja2 模板纯参数填空，**无业务规则分支**（业务规则已上移到 PlanningAgent）
 - **`goal_parsing / plan_review`**：Inversion + Reviewer — 有状态/确定性任务保留脚本
-- **`data_insight`**：按阶段（`query` / `attribution`）产出 ECharts option，透传给前端直接渲染
+- **`data_insight`**：Pipeline — Plan → Decompose → Execute → Reflect 四阶段驱动，接入 `ce_insight_core` 真实计算内核（三元组查询 + 12 种洞察函数 + NL2Code 沙箱）
 - **`wifi_simulation`**：Pipeline — 单脚本内部自驱 4 步（户型图识别 → 热力图 → RSSI → 选点对比）
 
 ## 技术栈
 
-- Python 3.11 + agno >= 2.5.14
+- Python 3.11 + [uv](https://docs.astral.sh/uv/) (包管理) + agno >= 2.5.14
 - Gradio (Web UI)
 - loguru (应用日志) + SQLite (会话持久化与业务追踪)
 - Jinja2 (配置模板渲染)
+- pandas / numpy / scipy / scikit-learn (数据洞察科学计算栈)
 
 ## 快速开始
 
+### 使用 uv（推荐）
+
 ```bash
-# 安装依赖
-pip install -r requirements.txt
+# 安装全部依赖（含 vendor/ce_insight_core editable 安装）
+uv sync
+
+# 安装开发依赖（pytest + ruff）
+uv sync --group dev
 
 # 设置 API Key
 export OPENAI_API_KEY="your-api-key"
 
 # 启动应用
+uv run python ui/app.py
+```
+
+### 使用 pip
+
+```bash
+pip install -r requirements.txt
+export OPENAI_API_KEY="your-api-key"
 python ui/app.py
 ```
 
 访问 http://localhost:7860 开始使用。
 
+### vendor 子包更新
+
+`vendor/ce_insight_core/` 以 **editable** 模式安装（`[tool.uv.sources]` 声明了 `editable = true`）。日常开发：
+
+- **修改 Python 源码**（`vendor/ce_insight_core/src/` 下的 `.py` 文件）→ **无需重新安装**，改动自动生效
+- **修改 `pyproject.toml`**（新增依赖 / 改版本号 / 改 entry points）→ 需要重新执行 `uv sync`
+- **从上游同步新版本** → `uv sync` 会重新解析依赖关系
+
 ## 项目结构
 
 ```
+├── pyproject.toml          # 项目依赖声明 (uv 规范源)
+├── .python-version         # Python 版本锁定 (uv sync 使用)
+├── requirements.txt        # pip 兼容依赖 (指向 pyproject.toml 为规范源)
 ├── configs/
 │   ├── model.yaml          # 模型 provider/endpoint
 │   ├── agents.yaml         # Team + 5 个 SubAgent 配置
@@ -76,8 +101,11 @@ python ui/app.py
 │   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow)
 │   ├── wifi_simulation/    # WIFI 4 步仿真
-│   ├── data_insight/       # 数据查询 + 归因 + ECharts
+│   ├── data_insight/       # 数据洞察 (Plan→Execute→Reflect, 接入 ce_insight_core)
 │   └── report_rendering/   # Markdown 报告渲染
+├── vendor/
+│   └── ce_insight_core/    # 洞察计算内核 (editable 安装, 三元组查询 + 12 种洞察策略)
+├── fae_poc/                # FAE 平台共享基础设施 (NCELogin + config.ini, .gitignore)
 ├── core/
 │   ├── agent_factory.py    # create_team() — 装配 Team + 5 SubAgent
 │   ├── session_manager.py  # session_hash → Team + Tracer 隔离
@@ -86,12 +114,13 @@ python ui/app.py
 │   └── observability/      # SQLite DAO + loguru sink + JSONL tracer
 ├── ui/
 │   ├── app.py              # Gradio 入口 (Team 流式事件处理)
-│   └── chat_renderer.py    # SubAgent 徽章 + 工具调用折叠渲染
-└── tests/test_smoke.py     # 20 项冒烟测试
+│   └── chat_renderer.py    # SubAgent 徽章 + 工具调用折叠/展开渲染
+└── tests/test_smoke.py     # 冒烟测试
 ```
 
 ## 配置说明
 
+- `pyproject.toml` — 项目依赖声明（uv 规范源），含 ruff / pytest 配置
 - `configs/model.yaml` — 模型 provider / endpoint / role_map
 - `configs/agents.yaml` — Team + 5 个 SubAgent 的 prompt + skills 子集 + description + memory
 - `configs/downstream.yaml` — 下游系统 mock/real 切换
@@ -101,7 +130,11 @@ python ui/app.py
 ## 测试
 
 ```bash
+# uv
+uv run pytest tests/test_smoke.py -v
+
+# pip
 pytest tests/test_smoke.py -v
 ```
 
-20 项测试覆盖配置加载、Skill 脚本执行、Team 装配、可观测性。
+覆盖配置加载、Skill 脚本执行、UI 渲染、Team 装配、可观测性。

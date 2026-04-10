@@ -1,13 +1,12 @@
-[build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
+# 本项目是**应用**（不是库），不声明 [build-system]。
+# uv 会把它当 virtual project：只安装 dependencies，不尝试构建自身。
 
 [project]
 name = "broadband-agent"
 version = "0.1.0"
 description = "家宽网络调优智能助手 — agno Team + 10 Skills 多智能体系统"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
+license = "Proprietary"
 authors = [{ name = "broadband-agent team" }]
 dependencies = [
     # ── agno 框架 + LLM ──
