@@ -67,6 +67,20 @@ export OPENAI_API_KEY="your-api-key"
 python ui/app.py
 ```
 
+### 企业代理环境
+
+如果启动时报 `Couldn't start the app because 'http://localhost:7860/gradio_api/startup-events' failed (code 504)`，说明公司代理拦截了 Gradio 的 localhost 自检请求。启动前设置：
+
+```bash
+# Linux / macOS
+export NO_PROXY="localhost,127.0.0.1"
+
+# Windows PowerShell
+$env:NO_PROXY="localhost,127.0.0.1"
+```
+
+> 注意：当前 `server_name="0.0.0.0"` 会监听所有网卡，同网段的其他人可以通过你的 IP 访问。如果需要限制为仅本机访问，将 `ui/app.py` 中的 `server_name` 改为 `"127.0.0.1"`。
+
 访问 http://localhost:7860 开始使用。
 
 ### vendor 子包更新
