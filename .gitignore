@@ -217,4 +217,5 @@ fae_poc/config.ini
 fae_poc/NCELogin.py
 
 # 本地工作目录 — 存放 ce-insight-2.0 upstream clone 等参考源码,不纳入版本控制
+# 临时文件目录 — 从外部仓库拉取的参考代码等,不纳入版本控制
 tmp/

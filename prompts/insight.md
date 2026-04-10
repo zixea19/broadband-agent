@@ -230,15 +230,20 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 
 ## 8. 双输出协议（关键）
 
-给 Orchestrator 的返回必须包含：
+给 Orchestrator 的返回包含**载荷 / 指针 / 交接契约**三类内容，遵循 provisioning.md §3 Step 4 的指针 vs 载荷纪律：
 
 ### 面向用户的内容
 - Markdown 报告（`report_rendering` 的 stdout 原样输出）
 - 每个 Step 的 `chart_configs`（透传 ECharts option，前端渲染）
 
-### 面向 Orchestrator 的结构化摘要
+### 指针（必填，一句话陈述）
+在 assistant 里用指针简短陈述产出要点，帮助用户和 Orchestrator 感知流程：
+- 例：`✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
+- 例：`✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
 
-用清晰的 JSON 块标注：
+### 结构化交接契约（必填，独立代码块）
+用于 Orchestrator 在用户要求生成方案时注入 PlanningAgent 作为 hints，**必须**以独立 JSON 代码块原样输出：
+
 ```json
 {
   "summary": {

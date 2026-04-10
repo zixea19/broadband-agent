@@ -34,11 +34,7 @@
 
 ## CEI 配置方案
 **启用**: true
-- CEI 阈值: 70
-- CEI 粒度: minute
-- CEI 模型: live_streaming
-- 采集时段: 18:00-22:00
-- 目标 PON 口: 全部
+- 权重配置: ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2
 
 ## 故障诊断方案
 **启用**: true
@@ -54,8 +50,7 @@
 ```
 
 **关键业务规则体现**:
-- 直播套餐 → CEI 阈值 70、粒度 minute
-- 卖场走播 → CEI 模型 live_streaming
+- 直播套餐 + 卖场走播 → CEI 权重大幅倾斜业务质量 (`ServiceQualityWeight:40`) 和 Wi-Fi 网络 (`WiFiNetworkWeight:25`)，压缩 ODN/OLT/网关层权重（走播场景故障源集中在前端业务）
 - 卖场走播 → 远程整改方式 `[2,3,4]`（信道+功率，**不含重启**，避免打断直播业务）
 - 直播套餐 → 远程执行策略 `idle`（闲时下发，避开 18:00-22:00 保障时段）
 - 投诉历史 = true → 严重性阈值升级为 warning
@@ -133,6 +128,6 @@ _跳过原因: 用户仅关注 WIFI 覆盖_
 ## 常见错误避免
 
 1. **缺少 `**启用**: true/false` 头** → Orchestrator 无法拆分派发
-2. **字段名错写**（如"阈值"代替"CEI 阈值"） → ProvisioningAgent 无法按 schema 解析
+2. **字段名错写**（如"权重"代替"权重配置"，或 CSV 格式写错） → ProvisioningAgent 无法按 schema 解析
 3. **禁用段不写跳过原因** → 用户体验差，也失去可追溯性
 4. **业务默认值照搬所有段**（区域性问题也启用 CEI 单点采集） → 违反稀疏方案原则

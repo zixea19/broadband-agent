@@ -27,8 +27,9 @@ OrchestratorTeam (leader, coordinate 模式)
 ### 业务 Skill 设计模式
 
 - **`plan_design`**：Instructional 范式 — 纯 SKILL.md + few-shot 样例，**无脚本**，由 LLM 直接生成分段 Markdown 方案
-- **`cei_pipeline / fault_diagnosis / remote_optimization / differentiated_delivery`**：Generator 范式 — SKILL.md 声明参数 schema，Jinja2 模板纯参数填空，**无业务规则分支**（业务规则已上移到 PlanningAgent）
-- **`goal_parsing / plan_review`**：Tool Wrapper + Reviewer — 有状态/确定性任务保留脚本
+- **`cei_pipeline / remote_optimization`**：Tool Wrapper 范式 — 封装 FAE 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini
+- **`fault_diagnosis / differentiated_delivery`**：Generator 范式 — SKILL.md 声明参数 schema，Jinja2 模板纯参数填空，**无业务规则分支**（业务规则已上移到 PlanningAgent）
+- **`goal_parsing / plan_review`**：Inversion + Reviewer — 有状态/确定性任务保留脚本
 - **`data_insight`**：按阶段（`query` / `attribution`）产出 ECharts option，透传给前端直接渲染
 - **`wifi_simulation`**：Pipeline — 单脚本内部自驱 4 步（户型图识别 → 热力图 → RSSI → 选点对比）
 
@@ -70,9 +71,9 @@ python ui/app.py
 │   ├── goal_parsing/       # 槽位追问引擎
 │   ├── plan_design/        # 方案设计 (Instructional, 无脚本)
 │   ├── plan_review/        # 方案评审 (violations + recommendations)
-│   ├── cei_pipeline/       # CEI 体验感知配置
+│   ├── cei_pipeline/       # CEI 权重配置下发 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── fault_diagnosis/    # 故障诊断配置
-│   ├── remote_optimization/# 远程优化动作
+│   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow)
 │   ├── wifi_simulation/    # WIFI 4 步仿真
 │   ├── data_insight/       # 数据查询 + 归因 + ECharts

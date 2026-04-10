@@ -21,7 +21,7 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 ## 核心原则
 
 1. **纯 LLM 生成**：本 Skill **无脚本、无模板**。PlanningAgent 通过 `get_skill_instructions("plan_design")` 加载本指令和 `get_skill_reference("plan_design", "examples.md")` 加载 few-shot 样例，然后**直接用 LLM 推理生成方案 Markdown**。
-2. **业务规则由 LLM 决定**：如"直播套餐默认 CEI 阈值 70"、"卖场走播场景关闭远程覆盖弱"等业务知识全部由本 Skill 的指令告知 LLM，**不能寄希望于下游 Skill 脚本补默认值**。
+2. **业务规则由 LLM 决定**：如"直播套餐默认 ServiceQualityWeight 40"、"卖场走播场景远程闭环不含重启"等业务知识全部由本 Skill 的指令告知 LLM，**不能寄希望于下游 Skill 脚本补默认值**。
 3. **字段对齐 schema**：每段启用时写出的业务字段，必须覆盖对应下游 Skill 的参数 schema（见 §输出结构契约）。这样 ProvisioningAgent 能直接按 schema 从方案段落提参。
 
 ## 输出结构契约（必须严格遵守）
@@ -43,11 +43,7 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 
 ## CEI 配置方案
 **启用**: true | false
-- CEI 阈值: <threshold 分>
-- CEI 粒度: <granularity>  # minute | hour
-- CEI 模型: <model>  # live_streaming | gaming | general | vvip
-- 采集时段: <time_window>
-- 目标 PON 口: <target_pon 或"全部">
+- 权重配置: <CSV 字符串>  # 8 维度权重，格式 ServiceQualityWeight:30,WiFiNetworkWeight:20,...（见§业务默认值速查）
 
 ## 故障诊断方案
 **启用**: true | false
@@ -72,7 +68,7 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 |---|---|---|
 | WIFI 仿真方案 | `wifi_simulation` | 无（Skill 内部自驱 4 步） |
 | 差异化承载方案 | `differentiated_delivery` | `slice_type, target_app, whitelist, bandwidth_guarantee_mbps` |
-| CEI 配置方案 | `cei_pipeline` | `threshold, granularity, model, time_window, target_pon` |
+| CEI 配置方案 | `cei_pipeline` | `weights` (8 维度 CSV 字符串) |
 | 故障诊断方案 | `fault_diagnosis` | `fault_tree_enabled, whitelist_rules, severity_threshold` |
 | 远程闭环处置方案 | `remote_optimization` | `strategy, rectification_method, operation_time` |
 
@@ -91,20 +87,17 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 
 ## 业务默认值速查（LLM 生成时使用）
 
-**套餐 → CEI 阈值**
-- 专线套餐 → 80 分
-- 直播套餐 → 70 分  
-- 普通套餐 → 60 分
+**套餐/场景 → CEI 权重预设 `weights`**
 
-**套餐 → CEI 模型**
-- 直播套餐 + 卖场/楼宇走播 → `live_streaming`
-- 专线套餐 → `vvip`
-- 游戏类用户 → `gaming`
-- 其他 → `general`
+> 8 维度权重，默认加和为 100。字段顺序不限，生成时以 CSV 字符串填入 `## CEI 配置方案` 段落的 `权重配置` 字段。详细维度含义见 `cei_pipeline/references/weight_parameters.md`。
 
-**套餐 → CEI 粒度**
-- 直播套餐 / 专线套餐 → `minute`
-- 普通套餐 → `hour`
+| 套餐 / 场景 | 推荐权重配置 | 设计思路 |
+|---|---|---|
+| 普通套餐（默认基线） | `ServiceQualityWeight:30,WiFiNetworkWeight:20,StabilityWeight:15,STAKPIWeight:10,GatewayKPIWeight:10,RateWeight:5,ODNWeight:5,OLTKPIWeight:5` | 均衡分布，常规家宽 |
+| 直播套餐 + 卖场/楼宇走播 | `ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2` | 业务感知 + Wi-Fi 覆盖并重，压缩 ODN/OLT |
+| 专线套餐 / VVIP | `ServiceQualityWeight:25,WiFiNetworkWeight:15,StabilityWeight:25,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:15,ODNWeight:5,OLTKPIWeight:5` | 稳定性 + 速率达成率优先 |
+| 游戏类用户 | `ServiceQualityWeight:20,WiFiNetworkWeight:20,StabilityWeight:25,STAKPIWeight:5,GatewayKPIWeight:15,RateWeight:15,ODNWeight:0,OLTKPIWeight:0` | 稳定性 + 网关 + 速率并重 |
+| 投诉处置叠加 | 在任一基础预设上 `ServiceQualityWeight` 再 +5（从低权重维度扣除） | 体现"优先恢复业务感知" |
 
 **场景 → 远程闭环执行策略 `strategy`**
 - 直播套餐（有业务时段保障）→ `idle`（闲时执行，避开直播时段）

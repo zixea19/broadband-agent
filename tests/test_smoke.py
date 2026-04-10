@@ -155,34 +155,37 @@ def test_plan_review_checker():
     assert len(result["checks"]) == 4
 
 
-def test_cei_pipeline_render():
-    mod = _load_script("cei_pipeline", "render.py")
-    result = json.loads(
-        mod.render(
-            json.dumps(
-                {
-                    "threshold": 70,
-                    "granularity": "minute",
-                    "model": "live_streaming",
-                    "time_window": "18:00-22:00",
-                    "target_pon": "全部",
-                }
-            )
-        )
-    )
-    assert result["skill"] == "cei_pipeline"
-    assert result["params"]["threshold"] == 70
-    assert "yaml_config" in result
-    assert "cei_spark" in result["yaml_config"]
-    assert "dispatch_result" in result
-
-
-def test_cei_pipeline_invalid_enum_falls_back():
-    mod = _load_script("cei_pipeline", "render.py")
-    # 非法 model 回退为默认值 general
-    result = json.loads(mod.render(json.dumps({"model": "bogus", "threshold": 65})))
-    assert result["params"]["model"] == "general"
-    assert result["params"]["threshold"] == 65
+def test_cei_pipeline_skill_schema():
+    """SKILL.md 声明新的 weights Tool Wrapper schema，旧 Generator schema 已清理。"""
+    skill_md = (
+        Path(_ROOT) / "skills" / "cei_pipeline" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    # 新 schema 关键字
+    for keyword in (
+        "Tool Wrapper",
+        "weights",
+        "ServiceQualityWeight",
+        "WiFiNetworkWeight",
+        "StabilityWeight",
+        "STAKPIWeight",
+        "GatewayKPIWeight",
+        "RateWeight",
+        "ODNWeight",
+        "OLTKPIWeight",
+        "fae_poc",
+        "cei_threshold_config.py",
+    ):
+        assert keyword in skill_md, f"SKILL.md 缺少关键字: {keyword}"
+    # 旧 schema 关键字应已被清理
+    for stale in (
+        "render.py",
+        "cei_spark",
+        "granularity",
+        "live_streaming",
+        "time_window",
+        "target_pon",
+    ):
+        assert stale not in skill_md, f"SKILL.md 残留旧 schema: {stale}"
 
 
 def test_fault_diagnosis_render():
@@ -991,6 +994,142 @@ def test_chat_handler_member_badge_once_per_member():
 # ============================================================================
 # Agno Team 装配
 # ============================================================================
+
+
+def test_render_tool_call_started_returns_single_folded_block():
+    """ToolCallStarted 阶段只有 inputs → 单条折叠块。"""
+    from ui.chat_renderer import render_tool_call
+
+    msgs = render_tool_call(
+        "cei_pipeline",
+        inputs={"weights": "ServiceQualityWeight:40"},
+        member="provisioning_cei_chain",
+    )
+    assert isinstance(msgs, list)
+    assert len(msgs) == 1
+    assert msgs[0]["metadata"]["title"].startswith("🔧")
+    assert "体验保障链" in msgs[0]["metadata"]["title"]
+    assert "ServiceQualityWeight" in msgs[0]["content"]
+
+
+def test_render_tool_call_completed_splits_stdout_into_expanded_block():
+    """ToolCallCompleted 含 stdout → 折叠元数据块 + 展开产物块。"""
+    from ui.chat_renderer import render_tool_call
+
+    outputs = {
+        "script_path": "scripts/cei_threshold_config.py",
+        "returncode": 0,
+        "stdout": '{"status": "success", "config_id": "CEI-12345"}',
+        "stderr": "",
+    }
+    msgs = render_tool_call("cei_pipeline", outputs=outputs)
+    assert len(msgs) == 2
+    # 折叠块 (审计元数据)
+    assert msgs[0]["metadata"]["title"].startswith("🔧")
+    assert "returncode=0" in msgs[0]["content"]
+    assert "✅" in msgs[0]["content"]
+    # 展开块 (产物正文,无 metadata.title → Gradio 默认展开)
+    assert "metadata" not in msgs[1]
+    assert "cei_pipeline 产出" in msgs[1]["content"]
+    assert "CEI-12345" in msgs[1]["content"]
+    assert "```json" in msgs[1]["content"]
+
+
+def test_render_tool_call_completed_markdown_stdout_inlined_raw():
+    """stdout 以 '#' 开头的 Markdown 报告 → 展开块不加代码块包裹。"""
+    from ui.chat_renderer import render_tool_call
+
+    outputs = {
+        "script_path": "scripts/render_report.py",
+        "returncode": 0,
+        "stdout": "# 网络质量洞察报告\n\n## PON-2/0/5\n- 带宽利用率过高",
+        "stderr": "",
+    }
+    msgs = render_tool_call("report_rendering", outputs=outputs)
+    assert len(msgs) == 2
+    assert "```" not in msgs[1]["content"].split("report_rendering 产出")[1][:20]
+    assert "# 网络质量洞察报告" in msgs[1]["content"]
+
+
+def test_render_tool_call_completed_failure_no_stdout_single_block():
+    """脚本失败且无 stdout → 只有折叠块,无展开块。"""
+    from ui.chat_renderer import render_tool_call
+
+    outputs = {
+        "script_path": "scripts/cei_threshold_config.py",
+        "returncode": 1,
+        "stdout": "",
+        "stderr": "FAE connection refused",
+    }
+    msgs = render_tool_call("cei_pipeline", outputs=outputs)
+    assert len(msgs) == 1
+    assert "❌" in msgs[0]["content"]
+    assert "FAE connection refused" in msgs[0]["content"]
+
+
+def test_render_tool_call_completed_parses_json_string_output():
+    """回归: agno 可能把 Skill 脚本返回值序列化为 JSON 字符串后再放入
+    ToolCallCompleted.tool.result。此时仍应走 Skill 格式路径拆分,不能退化为
+    '返回结果: { 全量 dict }' 的兜底展示。"""
+    import json as _json
+    from ui.chat_renderer import render_tool_call
+
+    outputs_str = _json.dumps(
+        {
+            "skill_name": "cei_pipeline",
+            "script_path": "cei_threshold_config.py",
+            "stdout": "CEI 权重配置下发成功 config_id=CEI-12345",
+            "stderr": "InsecureRequestWarning: ...",
+            "returncode": 0,
+        }
+    )
+    msgs = render_tool_call("cei_pipeline", outputs=outputs_str)
+    # 拆分为折叠审计块 + 展开产物块两条
+    assert len(msgs) == 2
+    # 折叠块含 script_path + returncode + stderr,**不是** 整个 dict 的 '返回结果' 兜底
+    assert "cei_threshold_config.py" in msgs[0]["content"]
+    assert "returncode=0" in msgs[0]["content"]
+    assert "**返回结果**" not in msgs[0]["content"]
+    assert "InsecureRequestWarning" in msgs[0]["content"]  # stderr 正确抽取
+    # 展开块只含 stdout 正文
+    assert "metadata" not in msgs[1]
+    assert "config_id=CEI-12345" in msgs[1]["content"]
+
+
+def test_render_tool_call_completed_with_both_inputs_and_outputs():
+    """app.py 的 ToolCallCompleted 分支会同时传 inputs + outputs,让持久化块
+    含入参解释 + 执行状态 + 展开产物。"""
+    from ui.chat_renderer import render_tool_call
+
+    msgs = render_tool_call(
+        "cei_pipeline",
+        inputs={"weights": "ServiceQualityWeight:40"},
+        outputs={
+            "script_path": "cei_threshold_config.py",
+            "stdout": "ok",
+            "stderr": "",
+            "returncode": 0,
+        },
+    )
+    assert len(msgs) == 2
+    # 折叠审计块里应同时有 **输入参数** + 执行状态
+    assert "**输入参数**" in msgs[0]["content"]
+    assert "ServiceQualityWeight:40" in msgs[0]["content"]
+    assert "✅" in msgs[0]["content"]
+    assert "returncode=0" in msgs[0]["content"]
+    # 展开块是 stdout 正文
+    assert "metadata" not in msgs[1]
+    assert "ok" in msgs[1]["content"]
+
+
+def test_render_tool_call_completed_non_skill_output_single_block():
+    """非 Skill 脚本返回 (无 stdout 键) → 单条折叠块包裹 JSON。"""
+    from ui.chat_renderer import render_tool_call
+
+    outputs = {"status": "ok", "data": [1, 2, 3]}
+    msgs = render_tool_call("some_internal_tool", outputs=outputs)
+    assert len(msgs) == 1
+    assert "**返回结果**" in msgs[0]["content"]
 
 
 def test_localskills_loads_all():

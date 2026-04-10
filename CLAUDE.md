@@ -50,9 +50,9 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 │   ├── goal_parsing/       # 槽位追问引擎 (Inversion + 脚本)
 │   ├── plan_design/        # 方案设计 (Instructional, 无脚本, 仅 SKILL.md + few-shot)
 │   ├── plan_review/        # 方案评审 (Reviewer, violations + recommendations)
-│   ├── cei_pipeline/       # CEI 体验感知配置 (参数 schema 驱动)
+│   ├── cei_pipeline/       # CEI 权重配置下发 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── fault_diagnosis/    # 故障诊断配置 (参数 schema 驱动)
-│   ├── remote_optimization/# 远程优化动作 (参数 schema 驱动)
+│   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow, 参数 schema 驱动)
 │   ├── wifi_simulation/    # WIFI 4 步仿真 (户型 → 热力图 → RSSI → 选点)
 │   ├── data_insight/       # 数据查询 + 归因 + ECharts (stage 驱动)
@@ -88,7 +88,7 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 
 1. **Skills 自包含**：模板、脚本、参考配置全在 Skill 目录内，通过 `LocalSkills` 自动扫描
 2. **会话隔离**：`SessionManager` 为每个 Gradio session_hash 创建独立 Team (含 5 SubAgent) + Tracer
-3. **参数 schema 驱动**：业务 Skill 的 SKILL.md 显式声明参数 schema，Provisioning 按 schema 从方案段落提参。业务规则（如"直播套餐默认 CEI 阈值 70"）全部上移到 PlanningAgent 的 LLM 决策，**Skill 不做业务判断**
+3. **参数 schema 驱动**：业务 Skill 的 SKILL.md 显式声明参数 schema，Provisioning 按 schema 从方案段落提参。业务规则（如"直播套餐默认 ServiceQualityWeight 40"）全部上移到 PlanningAgent 的 LLM 决策，**Skill 不做业务判断**
 4. **plan_design Instructional 范式**：无脚本，纯 SKILL.md + few-shot 样例，由 LLM 直接生成分段 Markdown 方案
 5. **可观测性双写**：SQLite + JSONL，写入失败不影响主流程。Tracer 向 Team leader 和所有 member 的 model 注入 prompt 回调
 6. **下游 mock/real 切换**：`downstream.yaml` 的 `mode` 字段控制
@@ -102,7 +102,8 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 - `plan_design` — Instructional（无脚本，纯指令）
 - `goal_parsing` — Inversion
 - `plan_review` — Reviewer
-- `cei_pipeline / fault_diagnosis / remote_optimization / differentiated_delivery` — Generator（参数 schema 驱动，纯模板填空）
+- `cei_pipeline / remote_optimization` — Tool Wrapper（封装 FAE 平台真实接口，CLI args 驱动）
+- `fault_diagnosis / differentiated_delivery` — Generator（参数 schema 驱动，纯模板填空）
 - `wifi_simulation / data_insight` — Pipeline（内部多步）
 - `report_rendering` — Generator
 

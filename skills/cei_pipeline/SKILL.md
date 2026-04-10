@@ -1,82 +1,142 @@
 ---
 name: cei_pipeline
-description: "CEI 体验感知流水线：根据传入参数渲染 Spark 配置，完成 CEI 采集→评分→阈值告警配置下发"
+description: "CEI 权重配置下发：调用 FAE 平台 config-threshold 接口，下发业务质量/Wi-Fi 网络/速率/稳定性等 8 维度 CEI 评分权重"
 ---
 
-# CEI 体验感知流水线
+# CEI 权重配置
 
 ## Metadata
-- **paradigm**: Generator (参数 schema 驱动，纯模板填空)
-- **when_to_use**: ProvisioningCeiChainAgent 需要根据方案段落或单点指令生成 CEI Spark 配置时
-- **inputs**: JSON 参数（schema 见下）
-- **outputs**: 渲染后的 CEI Spark YAML 配置 + mock 下发结果
+- **paradigm**: Tool Wrapper（封装 FAE 平台 config-threshold 接口）
+- **when_to_use**: ProvisioningCeiChainAgent 需要调整 CEI 各维度评分权重时
+- **inputs**: CLI 参数（`weights` / `config`）
+- **outputs**: 脚本 stdout（执行过程日志）+ returncode（0=成功，非 0=失败）
 
 ## Parameter Schema（Provisioning 按此从方案段落提参）
 
 | 字段 | 类型 | 必填 | 默认值 | 允许值 | 说明 |
 |---|---|---|---|---|---|
-| `threshold` | int | 是 | 70 | 0-100 | CEI 告警阈值分数（低于此值触发告警） |
-| `granularity` | string | 是 | `minute` | `minute` / `hour` | 采集粒度 |
-| `model` | string | 是 | `general` | `live_streaming` / `gaming` / `general` / `vvip` | 评分模型 |
-| `time_window` | string | 是 | `全天` | — | 保障时段，如 `18:00-22:00` 或 `全天` |
-| `target_pon` | string | 否 | `全部` | PON-x/x/x 或 `全部` | 目标 PON 口，空/"全部"表示全部 PON 口 |
+| `weights` | string (CSV) | 否 | 见 §weights 字段表 | `参数名:数值` 逗号分隔 | 8 维度权重配置，格式 `Name1:V1,Name2:V2,...` |
+| `config` | string | 否 | `fae_poc/config.ini` 绝对路径 | — | config.ini 路径 |
 
-**本 Skill 不做业务规则判断**（不根据套餐推阈值、不根据场景选模型），业务规则由 PlanningAgent 在生成方案时已经决定。本 Skill 只做"参数 → 配置 YAML"的纯格式转换。
+### weights 字段表（8 个维度，默认值加和为 100）
+
+| 参数名 | 默认值 | 允许值 | 含义 |
+|---|---|---|---|
+| `ServiceQualityWeight` | `30` | 0-100 | 业务质量权重（直播/视频/游戏等感知） |
+| `WiFiNetworkWeight` | `20` | 0-100 | Wi-Fi 网络权重（覆盖、干扰、连接） |
+| `StabilityWeight` | `15` | 0-100 | 稳定性权重（抖动、掉线、重传） |
+| `STAKPIWeight` | `10` | 0-100 | 终端 KPI 权重（STA 层指标） |
+| `GatewayKPIWeight` | `10` | 0-100 | 网关 KPI 权重（家庭网关侧指标） |
+| `RateWeight` | `5` | 0-100 | 速率权重（上下行速率） |
+| `ODNWeight` | `5` | 0-100 | ODN 权重（光分配网） |
+| `OLTKPIWeight` | `5` | 0-100 | OLT 权重（局端指标） |
+
+**本 Skill 不做业务规则判断**：具体权重组合由 PlanningAgent 在方案段落里决定（见 `plan_design` SKILL.md 的套餐/场景权重预设速查），本 Skill 只做"参数 → CLI → 接口调用"的映射。业务上建议 8 维度权重加和为 100，但是否强制由 FAE 平台侧校验，本 Skill 不做本地加和检查。
 
 ## When to Use
 
-- ✅ Provisioning 接收的方案段落中有"CEI 配置方案: **启用**: true"
-- ✅ 场景 3 单点指令（如"CEI 阈值调整为 75"）— 任务头 `[任务类型: 单点 CEI 配置]`
-- ✅ 完整保障链的第一步（任务头 `[任务类型: 完整保障链]`）
-- ❌ 用户只是问 CEI 概念（直接回答）
-- ❌ 用户要求数据洞察（应走 data_insight）
+- ✅ 场景 1（综合目标）"CEI 配置方案"段落启用时 → 完整保障链第一步
+- ✅ 场景 3（单点指令）"调整 CEI 权重" / "提高业务质量权重" → 任务头 `[任务类型: 单点 CEI 配置]`
+- ❌ 用户只是咨询 CEI 概念（直接回答即可）
+- ❌ 用户要求数据洞察或评分查询（应走 `data_insight` 或未来的 CEI 评分查询 Skill）
+- ❌ 需要调整故障诊断或远程闭环策略（分别走 `fault_diagnosis` / `remote_optimization`）
 
 ## How to Use
 
-1. ProvisioningAgent 从方案段落中按 schema 提取参数，组装 JSON 字符串
-2. 调用脚本：
+1. 从方案段落按 schema 提取参数（`weights` CSV 字符串 + 可选 `config`）
+2. 组装 argparse CLI 参数列表，调用脚本：
    ```
    get_skill_script(
        "cei_pipeline",
-       "render.py",
+       "cei_threshold_config.py",
        execute=True,
-       args=["<params_json_string>"]
+       args=["--weights", "ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2"],
+       timeout=120
    )
    ```
-3. 脚本读取 `references/cei_spark.yaml.j2` 模板，用参数填空后输出 `{yaml_config, dispatch_result}` JSON
-4. 将完整 JSON 透传给用户展示（不得改写）
+3. 脚本内部流程：加载 `fae_poc/config.ini` → `NCELogin` 校验/获取 token → 调用 FAE config-threshold 接口
+4. 把返回的 `stdout` / `stderr` / `returncode` **原样透传**给用户
+
+**CLI 参数连接符统一为空格**（argparse 标准），不要使用 `--weights: ServiceQualityWeight:40` 这类带冒号的写法。`weights` 作为单个字符串传入（逗号分隔），例如 `"ServiceQualityWeight:40,WiFiNetworkWeight:25"`；内部每个子项用 `参数名:数值` 的冒号分隔。
+
+`weights` 省略时脚本使用默认权重；可只传部分字段，脚本会在 FAE 侧以"只覆盖传入字段、其余维持现值"的语义处理（具体合并规则见 FAE 平台文档）。
 
 ## Scripts
 
-- `scripts/render.py` — 读取模板 + 参数填空 + 调用 mock 下发客户端
+- `scripts/cei_threshold_config.py` — FAE 平台 config-threshold 接口调用入口（依赖项目根 `fae_poc/` 包中的 `NCELogin` 和 `config.ini`）
 
 ## References
 
-- `references/cei_spark.yaml.j2` — Spark 配置模板（纯参数占位符，无业务条件分支）
+- `references/weight_parameters.md` — 8 维度权重参数说明表 + 套餐/场景常用预设速查
 
 ## Examples
 
-**输入**:
-```json
-{
-  "threshold": 70,
-  "granularity": "minute",
-  "model": "live_streaming",
-  "time_window": "18:00-22:00",
-  "target_pon": "全部"
-}
+**使用默认权重值**（全部字段取默认）：
+```bash
+python cei_threshold_config.py
 ```
 
-**输出**:
-```json
-{
-  "params": {...},
-  "yaml_config": "cei_spark:\n  target_pon: ...",
-  "dispatch_result": {"status": "success", "config_id": "CEI-..."}
-}
+**直播套餐卖场走播** — 提升业务质量 + Wi-Fi 权重：
+```bash
+python cei_threshold_config.py --weights ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2
 ```
+
+**专线套餐 / VVIP** — 稳定性优先：
+```bash
+python cei_threshold_config.py --weights ServiceQualityWeight:25,WiFiNetworkWeight:15,StabilityWeight:25,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:15,ODNWeight:5,OLTKPIWeight:5
+```
+
+**游戏类用户** — 稳定性 + 网关 + 速率并重：
+```bash
+python cei_threshold_config.py --weights ServiceQualityWeight:20,WiFiNetworkWeight:20,StabilityWeight:25,STAKPIWeight:5,GatewayKPIWeight:15,RateWeight:15,ODNWeight:0,OLTKPIWeight:0
+```
+
+**指定配置文件（用 Windows 绝对路径覆盖默认）**：
+```bash
+python cei_threshold_config.py --weights ServiceQualityWeight:40 --config C:/path/to/fae_poc/config.ini
+```
+
+## 脚本实现约束（脚本作者必须遵守）
+
+本 Skill 脚本封装真实 FAE 接口，有 4 条硬性约束。违反任何一条都会导致 agno 执行失败或挂起：
+
+1. **首行必须是 shebang** `#!/usr/bin/env python3`  
+   否则 Windows 下 agno 报 `[WinError 193] %1 不是有效的 Win32 应用程序`（agno 在 Win 下通过 shebang 解析解释器，没有就 fallback 到直接执行 `.py`）。
+
+2. **顶部必须做 fae_poc sys.path 双路径注入**  
+   从项目根 `broadband-agent/` 引入 `fae_poc` 包，同时让 `fae_poc/` 目录本身加入 `sys.path`，使 `from NCELogin import NCELogin` 这种 bare 导入可用：
+   ```python
+   _PROJECT_ROOT = Path(__file__).resolve().parents[3]
+   _FAE_POC_DIR = _PROJECT_ROOT / "fae_poc"
+   for _p in (str(_PROJECT_ROOT), str(_FAE_POC_DIR)):
+       if _p not in sys.path:
+           sys.path.insert(0, _p)
+   from fae_poc import DEFAULT_CONFIG_PATH, require_config
+   ```
+
+3. **argparse `--config` 默认值必须用 `str(DEFAULT_CONFIG_PATH)`**（绝对路径）  
+   禁止 `default='../../config.ini'` 这类相对路径 —— agno 运行脚本时 `cwd` 由框架决定，相对路径会解析错位。
+
+4. **所有 `requests` 调用必须显式传 `timeout=(connect, read)`**  
+   例如 `session.put(..., timeout=(5, 15))`。这包含 `NCELogin` 内部和 `CEIThresholdConfigClient.config_threshold()`。否则一旦 FAE 网络不通就会挂到 agno 外层 timeout 被强杀。
+
+Provisioning Agent 调用本 Skill 时 `get_skill_script` 建议显式传 `timeout=120`，为"NCELogin 登录 + 业务接口"两轮网络交互留足预算。
+
+## 依赖与部署
+
+`scripts/cei_threshold_config.py` 依赖项目根的 `fae_poc/` 包（见 `fae_poc/__init__.py` 的 docstring），与 `remote_optimization` 共享同一套基础设施。初次部署：
+
+1. 把本地 `NCELogin.py` 拷贝到 `fae_poc/NCELogin.py`（已 `.gitignore`）
+2. 把 `fae_poc/config.ini.example` 复制为 `fae_poc/config.ini` 并填入真实 `base_url` / `csrf_token` / `cookie`（已 `.gitignore`）
+3. config.ini 需包含 `[API]`（`ip` / `port`）和 `[AuthTokens]`（`x-uni-crsf-token` / `cookie`）两节
+
+未完成部署时脚本应以结构化 JSON 返回 `status=failed, stage=deployment_check`，不要 crash（与 `remote_optimization` 的降级行为一致）。
 
 ## 禁止事项
 
-- ❌ 不做业务规则推断（不根据套餐/场景补默认值，业务规则归属 PlanningAgent）
-- ❌ 模板不得使用 `{% if %}` 进行业务逻辑分支（仅允许参数填空）
+- ❌ 不做业务规则推断（权重组合由 PlanningAgent 在方案段落里决定）
+- ❌ 不在 Skill 脚本里硬编码 `base_url` / `csrf_token` / `cookie`，一律从 `fae_poc/config.ini` 读取
+- ❌ 不在 `weights` 里填 8 个字段之外的未知参数名（会被 FAE 平台拒绝）
+- ❌ 不要在 Provisioning Agent 里自己拼装 FAE 接口 JSON，统一通过本 Skill 的 CLI 入口
+- ❌ 不要改写脚本 stdout，原样透传给用户
+- ❌ 不要在本 Skill 里尝试查询 CEI 评分 — 评分查询是未来独立 Skill 的职责（当前中间态由 Provisioning Agent 在 `provisioning.md` 的保障链规则里 inline mock）

@@ -4,7 +4,7 @@
 """
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ─── Agent 中文显示名（用于徽章标题） ───
@@ -55,44 +55,88 @@ def render_tool_call(
     inputs: Any = None,
     outputs: Any = None,
     member: Optional[str] = None,
-) -> Dict[str, Any]:
-    """渲染工具调用为折叠块。
+) -> List[Dict[str, Any]]:
+    """渲染工具调用事件为一个或两个 Gradio ChatMessage。
 
-    对 Skill 脚本执行结果（outputs 含 stdout 键）按内容类型分别渲染：
-    - stdout 以 '#' 开头（Markdown 报告）：直接嵌入
-    - stdout 为 JSON 内容：包裹在代码块中
+    对 Skill 脚本执行结果（outputs 为 dict 且含 `stdout` 键），会**拆成两条**：
+
+    1. **折叠块**（带 ``metadata.title``）：输入参数 / script_path / returncode /
+       stderr — 审计信息，默认折叠。
+    2. **展开块**（无 ``metadata.title``）：stdout 正文 — 默认可见，用户无需点击；
+       Agent 因此可以省去"在 assistant 文本里复述 stdout"的开销，节省 token 并
+       避免改写风险。
+
+    其他情况（inputs-only 进行中、outputs 非 Skill 格式）返回单条折叠块。
+
+    Returns:
+        List[ChatMessage] — 调用方用 ``history + render_tool_call(...)`` 追加，
+        **不要**再用 ``[render_tool_call(...)]`` 二次包裹。
     """
-    parts = []
+    meta_parts: List[str] = []
     if inputs is not None:
-        parts.append(f"**输入参数**:\n```json\n{_format_json(inputs)}\n```")
+        meta_parts.append(f"**输入参数**:\n```json\n{_format_json(inputs)}\n```")
+
+    stdout_body: Optional[str] = None       # 非空则追加展开块
+    stdout_is_markdown = False
+
     if outputs is not None:
-        if isinstance(outputs, dict) and "stdout" in outputs:
-            script_path = outputs.get("script_path", "")
-            returncode = outputs.get("returncode", 0)
-            stdout = (outputs.get("stdout") or "").strip()
-            stderr = (outputs.get("stderr") or "").strip()
+        # agno 在不同版本下可能把 Skill 脚本返回值序列化为 JSON 字符串后
+        # 再放入 ToolCallCompleted.tool.result,这里统一先尝试解析成 dict,
+        # 避免走到下面的 "返回结果" 兜底分支、丢失 skill 格式拆分能力。
+        parsed = outputs
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except (json.JSONDecodeError, TypeError):
+                pass  # 非 JSON 字符串,保持原样交给兜底分支展示
+
+        if isinstance(parsed, dict) and "stdout" in parsed:
+            script_path = parsed.get("script_path", "")
+            returncode = parsed.get("returncode", 0)
+            stdout = (parsed.get("stdout") or "").strip()
+            stderr = (parsed.get("stderr") or "").strip()
             status = "✅" if returncode == 0 else "❌"
-            parts.append(f"{status} `{script_path}` (returncode={returncode})")
-            if stdout:
-                if stdout.startswith("#"):
-                    parts.append(stdout)
-                else:
-                    parts.append(f"```json\n{stdout}\n```")
+            meta_parts.append(f"{status} `{script_path}` (returncode={returncode})")
             if stderr:
-                parts.append(f"**stderr**:\n```\n{stderr}\n```")
+                meta_parts.append(f"**stderr**:\n```\n{stderr}\n```")
+            if stdout:
+                stdout_body = stdout
+                stdout_is_markdown = stdout.startswith("#")
         else:
-            parts.append(f"**返回结果**:\n```json\n{_format_json(outputs)}\n```")
-    content = "\n\n".join(parts) if parts else "调用中..."
+            meta_parts.append(f"**返回结果**:\n```json\n{_format_json(outputs)}\n```")
+
+    meta_content = "\n\n".join(meta_parts) if meta_parts else "调用中..."
 
     title_prefix = f"🔧 调用 {skill_name}"
     if member:
         title_prefix = f"🔧 [{_display_agent(member)}] 调用 {skill_name}"
 
-    return {
-        "role": "assistant",
-        "metadata": {"title": title_prefix},
-        "content": content,
-    }
+    messages: List[Dict[str, Any]] = [
+        {
+            "role": "assistant",
+            "metadata": {"title": title_prefix},
+            "content": meta_content,
+        }
+    ]
+
+    if stdout_body:
+        if stdout_is_markdown:
+            body_text = stdout_body
+        else:
+            body_text = f"```json\n{stdout_body}\n```"
+
+        header = f"**{skill_name} 产出**"
+        if member:
+            header = f"**[{_display_agent(member)}] {skill_name} 产出**"
+
+        messages.append(
+            {
+                "role": "assistant",
+                "content": f"{header}\n\n{body_text}",
+            }
+        )
+
+    return messages
 
 
 def render_response(content: str) -> Dict[str, Any]:
