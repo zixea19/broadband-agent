@@ -48,7 +48,7 @@ except ImportError as exc:
     }, ensure_ascii=False))
     sys.exit(1)
 
-_MAX_RECORDS = 50
+_MAX_RECORDS = 15
 
 
 def _safe_parse_json(raw: str) -> dict:
