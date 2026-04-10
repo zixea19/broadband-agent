@@ -34,6 +34,7 @@
 import json
 import re
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -106,6 +107,22 @@ def _safe_parse_json(raw: str) -> dict:
     return json.loads(raw)  # 会抛 JSONDecodeError
 
 
+def _resolve_data_path(table_level: str) -> str:
+    """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
+    try:
+        import yaml
+        config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            key = "minute_table_path" if table_level == "minute" else "day_table_path"
+            path = cfg.get(key, "mock") or "mock"
+            return path
+    except Exception:
+        pass
+    return "mock"
+
+
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 查询 → 执行洞察 → 序列化。"""
     try:
@@ -125,7 +142,7 @@ def run(payload_json: str) -> str:
     if table_level not in ("day", "minute"):
         return _err(f"table_level 必须是 day/minute，收到: {table_level}")
 
-    data_path = payload.get("data_path", "mock")
+    data_path = payload.get("data_path") or _resolve_data_path(table_level)
 
     # 从三元组推导默认的 value_columns / group_column
     default_value_cols = [m.get("name") for m in query_config.get("measures", []) if m.get("name")]

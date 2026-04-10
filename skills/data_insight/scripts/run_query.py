@@ -27,6 +27,7 @@
 import json
 import re
 import sys
+from pathlib import Path
 from typing import Any
 
 try:
@@ -76,6 +77,21 @@ def _safe_parse_json(raw: str) -> dict:
     return json.loads(raw)
 
 
+def _resolve_data_path(table_level: str) -> str:
+    """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
+    try:
+        import yaml
+        config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            key = "minute_table_path" if table_level == "minute" else "day_table_path"
+            return cfg.get(key, "mock") or "mock"
+    except Exception:
+        pass
+    return "mock"
+
+
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 修复三元组 → 查询 → 序列化结果。"""
     try:
@@ -91,7 +107,7 @@ def run(payload_json: str) -> str:
     if table_level not in ("day", "minute"):
         return _err(f"table_level 必须是 day/minute，收到: {table_level}")
 
-    data_path = payload.get("data_path", "mock")
+    data_path = payload.get("data_path") or _resolve_data_path(table_level)
 
     try:
         fixed_config, fix_warnings = cic.fix_query_config(query_config, table_level=table_level)

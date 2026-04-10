@@ -1,11 +1,17 @@
 """
-外网 Mock 接口，模拟内网 cei_query 包的查询行为。
+数据查询接口：支持真实 parquet 文件和 Mock 假数据两种模式。
+
+- path 指向真实 .parquet / .csv 文件时 → 读取文件并按三元组过滤
+- path 为 "mock" 或文件不存在时 → 生成 Mock 假数据（原有逻辑）
 内网部署时将 import 路径从 cei_query_mock 换为 cei_query 即可。
-支持天表和分钟表两种数据模式。
 """
 
+import logging
+import os
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def query_subject_from_single_table(
@@ -13,9 +19,10 @@ def query_subject_from_single_table(
     subspace,
     use_pandas: bool = True,
 ) -> list[pd.DataFrame]:
-    """
-    Mock 版三元组查询，返回结构与真实接口一致的假数据。
-    自动判断 measures 中的字段是天表还是分钟表字段，返回对应格式的数据。
+    """三元组查询入口。
+
+    当 path 指向真实文件时读取 parquet/csv 并做三元组过滤；
+    否则走 Mock 假数据生成。
     """
     if hasattr(subspace, "model_dump"):
         config = subspace.model_dump()
@@ -26,6 +33,11 @@ def query_subject_from_single_table(
     else:
         config = {}
 
+    # ---- 真实文件/文件夹模式 ----
+    if path and path != "mock" and (os.path.isfile(path) or os.path.isdir(path)):
+        return _query_from_real_file(path, config)
+
+    # ---- Mock 模式（原有逻辑）----
     breakdown = config.get("breakdown", {})
     measures = config.get("measures", [])
     dimensions = config.get("dimensions", [[]])
@@ -35,7 +47,6 @@ def query_subject_from_single_table(
 
     filter_values = _extract_filter_values(dimensions)
 
-    # 判断是否为分钟表查询
     measure_names = {m.get("name", "") for m in measures}
     is_minute = bool(measure_names & MINUTE_TABLE_FIELDS)
 
@@ -47,6 +58,99 @@ def query_subject_from_single_table(
         df = _generate_grouped_data(breakdown_name, measures, filter_values)
 
     return [df]
+
+
+# ==================== 真实文件查询 ====================
+
+def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
+    """从 parquet 文件/文件夹或 csv 读取数据，按三元组做过滤 + 聚合。
+
+    支持：
+    - 单个 .parquet 文件
+    - parquet 文件夹（pd.read_parquet 自动读取文件夹内所有 parquet 文件）
+    - 单个 .csv 文件
+    """
+    logger.info("从真实数据查询: %s", path)
+
+    # 读取文件/文件夹
+    try:
+        if os.path.isdir(path) or path.endswith(".parquet"):
+            df = pd.read_parquet(path)
+        elif path.endswith(".csv"):
+            df = pd.read_csv(path)
+        else:
+            # 尝试当 parquet 读
+            df = pd.read_parquet(path)
+    except Exception as exc:
+        logger.error("读取数据文件失败: %s — %s", path, exc)
+        return [pd.DataFrame()]
+
+    logger.info("原始数据: %d 行 x %d 列", df.shape[0], df.shape[1])
+
+    breakdown = config.get("breakdown", {})
+    measures = config.get("measures", [])
+    dimensions = config.get("dimensions", [[]])
+
+    breakdown_name = breakdown.get("name", "portUuid")
+    breakdown_type = breakdown.get("type", "UNORDERED")
+    aggr_map = {
+        "AVG": "mean", "SUM": "sum", "COUNT": "count",
+        "MIN": "min", "MAX": "max", "MEAN": "mean",
+    }
+
+    # 1. 应用维度过滤（IN 条件）
+    filter_values = _extract_filter_values(dimensions)
+    for dim_name, values in filter_values.items():
+        if dim_name in df.columns and values:
+            df = df[df[dim_name].isin(values)]
+            logger.info("过滤 %s IN %s → %d 行", dim_name, values[:3], len(df))
+
+    if df.empty:
+        logger.warning("过滤后数据为空")
+        return [df]
+
+    # 2. 确定需要的列
+    measure_names = [m.get("name", "") for m in measures if isinstance(m, dict) and m.get("name")]
+    # 只选 df 中实际存在的列
+    available_measures = [m for m in measure_names if m in df.columns]
+    missing_measures = [m for m in measure_names if m not in df.columns]
+    if missing_measures:
+        logger.warning("以下 measure 不在数据中: %s（可用列: %s）",
+                       missing_measures, list(df.columns)[:15])
+
+    if not available_measures:
+        logger.warning("没有可用的 measure 列，返回原始数据前 50 行")
+        return [df.head(50)]
+
+    # 3. 按 breakdown 分组聚合
+    if breakdown_name and breakdown_name in df.columns:
+        # 构建聚合字典
+        agg_dict = {}
+        for m in measures:
+            if not isinstance(m, dict):
+                continue
+            name = m.get("name", "")
+            aggr = m.get("aggr", "AVG")
+            if name in available_measures:
+                pandas_aggr = aggr_map.get(aggr.upper(), "mean")
+                agg_dict[name] = pandas_aggr
+
+        if agg_dict:
+            try:
+                result = df.groupby(breakdown_name, as_index=False).agg(agg_dict)
+                # 数值列保留 2 位小数
+                for col in result.select_dtypes(include="number").columns:
+                    result[col] = result[col].round(2)
+                logger.info("聚合完成: %d 行 x %d 列", result.shape[0], result.shape[1])
+                return [result]
+            except Exception as exc:
+                logger.warning("聚合失败（%s），返回原始数据: %s", exc, type(exc).__name__)
+
+    # 4. 无法聚合时，选列 + 返回
+    cols_to_keep = [c for c in [breakdown_name] + available_measures if c in df.columns]
+    # 去重保持顺序
+    cols_to_keep = list(dict.fromkeys(cols_to_keep))
+    return [df[cols_to_keep].head(500)]
 
 
 # ==================== 分钟表字段集合 ====================
