@@ -35,7 +35,7 @@ except ImportError as exc:
         "skill": "insight_decompose",
         "op": "list_schema",
         "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=False))
+    }, ensure_ascii=True))
     sys.exit(1)
 
 
@@ -105,7 +105,7 @@ def run(payload_json: str) -> str:
         "focus_dimensions": focus,
         "schema_markdown": schema_md,
         "all_fields": all_fields,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _err(msg: str) -> str:
@@ -114,7 +114,7 @@ def _err(msg: str) -> str:
         "skill": "insight_decompose",
         "op": "list_schema",
         "error": msg,
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 if __name__ == "__main__":

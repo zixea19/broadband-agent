@@ -236,15 +236,20 @@ async def chat_handler(
                     history = _flush_reasoning(history)
 
                 # Team leader (Orchestrator) 的 content 累积到最终回答;
-                # member (如 InsightAgent) 的 content 也透传给前端,
+                # member (如 InsightAgent) 的 content 也累积后透传给前端,
                 # 供前端解析 <!--event:xxx--> 标记做阶段渲染。
                 if content_delta and is_leader:
                     full_content += str(content_delta)
                     yield history + [render_response(full_content)]
                 elif content_delta and not is_leader:
-                    # member 的 content 单独渲染（不混入 leader 的 full_content）
-                    history = history + [render_response(str(content_delta))]
-                    yield history
+                    # member 的 content 按 source 累积，避免每个 delta 都生成新消息
+                    if not hasattr(chat_handler, '_member_content'):
+                        chat_handler._member_content = {}
+                    mid = source_id or "unknown_member"
+                    chat_handler._member_content[mid] = chat_handler._member_content.get(mid, "") + str(content_delta)
+                    mc = chat_handler._member_content[mid]
+                    # 只有在内容包含完整的事件标记或换行时才更新渲染
+                    yield history + [render_response(mc)]
 
             # ---- 运行完成 ----
             elif event_type == "RunCompleted":
@@ -258,6 +263,14 @@ async def chat_handler(
         # 残留的 reasoning buffer (例如最后一段思考没有 ReasoningCompleted) 也要固化
         if reasoning_buffer:
             history = _flush_reasoning(history)
+
+        # 清理 member content 累积缓存
+        if hasattr(chat_handler, '_member_content'):
+            # 把累积的 member content 固化到 history
+            for mid, mc in chat_handler._member_content.items():
+                if mc.strip():
+                    history = history + [render_response(mc)]
+            chat_handler._member_content = {}
 
         # 最终回答
         if full_content:
