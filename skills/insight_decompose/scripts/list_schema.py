@@ -118,8 +118,5 @@ def _err(msg: str) -> str:
 
 
 if __name__ == "__main__":
-    # Windows 默认 GBK 编码无法输出 emoji 等 Unicode 字符，强制 UTF-8
-    if sys.platform == "win32":
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     _payload = sys.argv[1] if len(sys.argv) > 1 else "{}"
     print(run(_payload))

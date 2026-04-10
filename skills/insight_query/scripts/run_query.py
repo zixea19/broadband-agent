@@ -187,8 +187,5 @@ def _json_default(obj: Any) -> Any:
 
 
 if __name__ == "__main__":
-    # Windows GBK 编码兜底
-    if sys.platform == "win32":
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     _payload = sys.argv[1] if len(sys.argv) > 1 else "{}"
     print(run(_payload))
