@@ -200,6 +200,5 @@ if __name__ == "__main__":
     _payload = sys.argv[1] if len(sys.argv) > 1 else "{}"
     output = run(_payload)
     sys.stdout.buffer.write(output.encode("utf-8"))
-    sys.stdout.buffer.write(b"
-")
+    sys.stdout.buffer.write(b"\n")
     sys.stdout.buffer.flush()
