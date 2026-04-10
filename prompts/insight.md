@@ -43,7 +43,21 @@
      ]
    }
    ```
-3. **不要**把 MacroPlan 发给用户；只在执行到某 Phase 时，用一句话告诉用户"正在执行 Phase N：XXX"
+3. **必须**在 assistant 消息中输出 MacroPlan，让前端渲染阶段概览：
+   ```json
+   <!--event:plan-->
+   {
+     "goal": "用户意图的一句话摘要",
+     "total_phases": 4,
+     "phases": [
+       {"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day"},
+       {"phase_id": 2, "name": "L2-维度归因扫描", "milestone": "确定哪个维度拖分", "table_level": "day"},
+       {"phase_id": 3, "name": "L3-根因指标定位", "milestone": "找到维度内具体异常指标", "table_level": "day"},
+       {"phase_id": 4, "name": "L4-时序下钻验证", "milestone": "验证根因指标时序分布", "table_level": "minute"}
+     ]
+   }
+   ```
+   前端通过 `<!--event:plan-->` 标记识别这是阶段规划数据。
 
 ### 加载参考文件的时机
 - 用户问题**明确是根因分析 / 指定维度 / 指定设备**时 → 加载 `plan_fewshots.md`
@@ -144,6 +158,28 @@ get_skill_script("data_insight", "run_insight.py", execute=True, args=[
 ```
 
 🔴 **切记**：`dimensions` 格式错误是最常见的导致下钻失效的原因。如果你看到返回的 `data_shape` 行数跟全量数据一样多（如 3857 行），说明过滤没有生效，请检查 dimensions 格式。
+
+### 前端事件输出（每个 Phase 和 Step 必须输出）
+
+**Phase 开始时**，在 assistant 消息中输出：
+```json
+<!--event:phase_start-->
+{"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "status": "running"}
+```
+
+**每个 Step 执行完后**，在 assistant 消息中输出步骤摘要（脚本 stdout 已通过 tool call 展示，这里只输出精简版供前端渲染步骤卡片）：
+```json
+<!--event:step_result-->
+{"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08），z-score=5.36", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}}
+```
+
+**Phase 结束时**，在 assistant 消息中输出反思决策：
+```json
+<!--event:reflect-->
+{"phase_id": 1, "choice": "A", "reason": "成功识别低分PON口，按原计划进入Phase 2", "next_phase": 2}
+```
+
+前端通过 `<!--event:xxx-->` 标记识别事件类型并做对应渲染。
 
 ### 每步的调用模式
 
@@ -270,6 +306,42 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 3. **必须**原样输出 stdout 作为最终报告，**禁止**二次改写、摘要或重排版
 
 4. **兜底**：如果 `report_rendering` 调用失败（如 args 类型校验错误），**直接在 assistant 消息中用 Markdown 格式输出报告**，包含：各 Phase 的步骤结果表格、关键发现、结构化交接契约 JSON。不要因为渲染失败就丢弃分析结果
+
+5. **无论报告渲染是否成功**，都必须在 assistant 消息末尾输出完整的结构化报告事件，供前端解析：
+   ```json
+   <!--event:report-->
+   {
+     "title": "CEI 低分 PON 口根因分析报告",
+     "goal": "找出 CEI 分数较低的 PON 口并分析原因",
+     "phases": [
+       {
+         "phase_id": 1,
+         "name": "L1-定位低分PON口",
+         "milestone": "识别CEI最低的PON口列表",
+         "table_level": "day",
+         "steps": [
+           {
+             "step_id": 1,
+             "insight_type": "OutstandingMin",
+             "significance": 0.73,
+             "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）",
+             "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]},
+             "chart_configs": { ... }
+           }
+         ],
+         "reflection": {"choice": "A", "reason": "..."}
+       }
+     ],
+     "summary": { ... 结构化交接契约 ... }
+   }
+   ```
+   前端通过 `<!--event:report-->` 标记识别这是最终报告数据，可一次性渲染完整的多阶段报告页面。
+
+6. **最后输出 done 事件**：
+   ```json
+   <!--event:done-->
+   {"total_phases": 4, "total_steps": 12, "total_charts": 8}
+   ```
 
 ---
 
