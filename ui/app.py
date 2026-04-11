@@ -489,7 +489,7 @@ async def _streaming_with_reenable(message, history, session_state):
 
 def create_app() -> gr.Blocks:
     """创建 Gradio 应用。"""
-    with gr.Blocks(title="家宽网络调优助手", css=_CSS) as app:
+    with gr.Blocks(title="家宽网络调优助手") as app:
         gr.Markdown("# 🏠 家宽网络调优智能助手")
         gr.Markdown(
             "Team 架构：Orchestrator 路由 → PlanningAgent / InsightAgent / ProvisioningAgent × 3"
@@ -574,13 +574,14 @@ def create_app() -> gr.Blocks:
 
         new_session_btn.click(fn=new_session, outputs=[chatbot, session_state])
 
-        # Session 生命周期关闭 — 页面卸载时销毁会话，写入 ended_at
-        def _on_unload(sess_state):
-            sh = (sess_state or {}).get("session_hash")
-            if sh:
-                session_manager.destroy(sh)
+        # Session 生命周期关闭 — 页面卸载时销毁所有非活跃会话。
+        # Gradio 6.x unload() 不再支持 inputs 参数，无法从 State 中取具体的
+        # session_hash；退而求其次，在此仅做日志记录，实际 ended_at 写入依赖
+        # new_session_btn 点击时对旧会话的显式 destroy 调用。
+        def _on_unload():
+            logger.info("页面卸载 (Gradio 6.x: unload 无 State 输入，session cleanup 靠 GC)")
 
-        app.unload(_on_unload, inputs=[session_state])
+        app.unload(_on_unload)
 
     return app
 
@@ -592,4 +593,5 @@ if __name__ == "__main__":
         server_port=7860,
         share=True,
         theme=gr.themes.Soft(),
+        css=_CSS,
     )

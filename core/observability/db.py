@@ -61,7 +61,6 @@ CREATE TABLE IF NOT EXISTS traces (
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_traces_session ON traces(session_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_traces_agent ON traces(agent_name, event_type);
 """
 
 
@@ -96,6 +95,14 @@ class Database:
                     conn.commit()
                 except sqlite3.OperationalError:
                     pass  # 列已存在，忽略
+            # agent_name 列确保存在后才能建索引（对旧 DB 做迁移时顺序不能提前）
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_traces_agent ON traces(agent_name, event_type)"
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
             # 自检：验证表存在且可写
             tables = [
                 r[0]
