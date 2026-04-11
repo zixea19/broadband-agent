@@ -132,7 +132,18 @@ def render_tool_call(
                     stdout_body = "\n\n".join(stdout_parts)
                     stdout_is_markdown = True
                 else:
-                    stdout_body = stdout
+                    # 对 JSON stdout 做 unicode 归一化：解析后以 ensure_ascii=False
+                    # 重新序列化，将 \uXXXX 转义还原为中文（防御脚本或框架层
+                    # 使用 ensure_ascii=True 导致的可读性问题）。
+                    if _stdout_json is not None:
+                        stdout_body = json.dumps(
+                            _stdout_json,
+                            ensure_ascii=False,
+                            indent=2,
+                            default=str,
+                        )
+                    else:
+                        stdout_body = stdout
                     stdout_is_markdown = stdout.startswith("#")
         else:
             meta_parts.append(f"**返回结果**:\n```json\n{_format_json(outputs)}\n```")
