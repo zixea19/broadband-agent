@@ -81,6 +81,62 @@ def _extract_source_id(event: Any, is_leader: bool) -> Optional[str]:
     return None
 
 
+# ─── Skill 工具 trace 提取 ─────────────────────────────────────────────
+#
+# agno 框架的 get_skill_script / get_skill_instructions / get_skill_reference
+# 是框架级工具，但 trace 需要记录业务级信息。以下函数从框架 tool_args / tool_result
+# 中提取真正的 skill 名称和解析后的脚本输出，使 JSONL 轨迹可读。
+
+_SKILL_TOOLS = frozenset({"get_skill_script", "get_skill_instructions", "get_skill_reference"})
+
+
+def _extract_skill_trace(
+    tool_name: str,
+    tool_args: Any,
+    tool_result: Any = None,
+) -> tuple:
+    """从 agno skill 工具调用中提取业务级 trace 信息。
+
+    Returns:
+        (trace_skill, trace_inputs, trace_outputs) — 业务级字段:
+        - trace_skill:   "wifi_simulation/simulate.py" 而非 "get_skill_script"
+        - trace_inputs:  脚本实际参数（而非框架参数包装）
+        - trace_outputs: 解析后的 stdout JSON（而非二次编码字符串）
+    """
+    if tool_name not in _SKILL_TOOLS:
+        return tool_name, tool_args, tool_result
+
+    # ---- 从 tool_args 中提取 skill_name / script_path ----
+    trace_skill = tool_name
+    trace_inputs = tool_args
+    if isinstance(tool_args, dict):
+        _sn = tool_args.get("skill_name", "")
+        _sp = tool_args.get("script_path") or tool_args.get("reference_path", "")
+        if _sn:
+            trace_skill = f"{_sn}/{_sp}" if _sp else _sn
+        # 脚本实际参数
+        trace_inputs = tool_args.get("args", tool_args)
+
+    # ---- 从 tool_result 中解析 stdout ----
+    trace_outputs = tool_result
+    if tool_name == "get_skill_script" and tool_result is not None:
+        parsed = tool_result
+        if isinstance(parsed, str):
+            try:
+                parsed = json.loads(parsed)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+        if isinstance(parsed, dict) and "stdout" in parsed:
+            stdout_str = (parsed.get("stdout") or "").strip()
+            try:
+                trace_outputs = json.loads(stdout_str)
+            except (json.JSONDecodeError, TypeError):
+                # stdout 非 JSON，保留原始包装
+                trace_outputs = tool_result
+
+    return trace_skill, trace_inputs, trace_outputs
+
+
 async def chat_handler(
     message: str,
     history: List[Dict[str, Any]],
@@ -221,7 +277,13 @@ async def chat_handler(
                     # 记录工具调用开始时间，用于计算延迟
                     _tool_key = f"{source_id or ''}:{tool_name}"
                     tool_start_times[_tool_key] = time.monotonic()
-                    ctx.tracer.tool_invoke(tool_name, tool_args, agent=agent, is_leader=is_leader)
+                    # Skill 工具：提取业务级 skill 名称 (如 "wifi_simulation/simulate.py")
+                    _trace_skill, _trace_inputs, _ = _extract_skill_trace(
+                        tool_name, tool_args
+                    )
+                    ctx.tracer.tool_invoke(
+                        _trace_skill, _trace_inputs, agent=agent, is_leader=is_leader
+                    )
                     tool_label_source = source_id if not is_leader else None
                     yield (
                         history
@@ -244,27 +306,31 @@ async def chat_handler(
                     _tool_key = f"{source_id or ''}:{tool_name}"
                     _start = tool_start_times.pop(_tool_key, None)
                     _latency_ms = int((time.monotonic() - _start) * 1000) if _start else 0
+                    # Skill 工具：提取业务级信息用于 trace 和 DB
+                    _trace_skill, _trace_inputs, _trace_outputs = _extract_skill_trace(
+                        tool_name, tool_args, tool_result
+                    )
                     ctx.tracer.tool_result(
-                        tool_name,
-                        tool_result,
+                        _trace_skill,
+                        _trace_outputs,
                         latency_ms=_latency_ms,
                         agent=agent,
                         is_leader=is_leader,
                     )
                     if ctx.db_session_id:
                         _inputs_str = (
-                            json.dumps(tool_args, ensure_ascii=False, default=str)
-                            if tool_args and not isinstance(tool_args, str)
-                            else (tool_args or "")
+                            json.dumps(_trace_inputs, ensure_ascii=False, default=str)
+                            if _trace_inputs and not isinstance(_trace_inputs, str)
+                            else (_trace_inputs or "")
                         )
                         _outputs_str = (
-                            json.dumps(tool_result, ensure_ascii=False, default=str)
-                            if tool_result and not isinstance(tool_result, str)
-                            else (tool_result or "")
+                            json.dumps(_trace_outputs, ensure_ascii=False, default=str)
+                            if _trace_outputs and not isinstance(_trace_outputs, str)
+                            else (_trace_outputs or "")
                         )
                         db.insert_tool_call(
                             ctx.db_session_id,
-                            skill_name=tool_name,
+                            skill_name=_trace_skill,
                             inputs_json=_inputs_str,
                             outputs_json=_outputs_str,
                             latency_ms=_latency_ms,
