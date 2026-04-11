@@ -1205,17 +1205,21 @@ def test_render_tool_call_completed_non_skill_output_single_block():
 
 
 def test_localskills_loads_all():
-    """LocalSkills 能扫描并加载 10 个 Skill。"""
+    """LocalSkills 能扫描并加载全部 14 个 Skill。"""
     from agno.skills.loaders.local import LocalSkills
 
     loader = LocalSkills(str(Path(_ROOT) / "skills"), validate=False)
     skills = loader.load()
-    assert len(skills) == 10
+    assert len(skills) == 14
     names = {s.name for s in skills}
-    assert "goal_parsing" in names
-    assert "plan_design" in names
-    assert "cei_pipeline" in names
-    assert "differentiated_delivery" in names
+    expected = {
+        "goal_parsing", "plan_design", "plan_review",
+        "cei_pipeline", "fault_diagnosis", "remote_optimization",
+        "differentiated_delivery", "wifi_simulation",
+        "insight_plan", "insight_decompose", "insight_query",
+        "insight_nl2code", "insight_reflect", "insight_report",
+    }
+    assert names == expected, f"Expected {expected}, got {names}"
 
 
 def test_create_team_structure():
