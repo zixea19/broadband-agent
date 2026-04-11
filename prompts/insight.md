@@ -73,6 +73,8 @@ Report (1 次)
 
 **执行时序**：`plan` → [`decompose_result` → `phase_start` → 调脚本 → `step_result` × M → `reflect`] × N Phase → `done`
 
+🔴 **禁止重复输出**：`<!--event:xxx-->` JSON 会被前端自动渲染为结构化表格/摘要。输出事件标记后，**禁止**再手写 Markdown 表格、列表或其他重复展示同一数据的内容。只需紧跟一句话指针即可（见 §8.2）。
+
 **容错规则**：
 - Step 执行失败时，`step_result` 的 `status` 字段为 `"error"`，`summary` 描述错误原因
 - Phase 被 Reflect D 跳过时，仍输出该 Phase 的 `phase_start`（status=`"skipped"`），但不输出 step_result
@@ -377,9 +379,12 @@ InsightAgent 产出 3 类输出，各自独立、互不替代：
 
 ### 8.2 事件标记（assistant 文本中输出）
 - 按 §2「事件输出协议」在 assistant 文本中输出 `<!--event:xxx-->` + JSON
-- 同时用**指针**（一句话陈述）帮助感知流程进展：
-  - 例：`✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
-  - 例：`✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
+- 事件标记后**只跟一句话指针**（帮助感知进展），**禁止**再手写 Markdown 表格、列表或任何重复展示同一数据的内容。前端会自动把事件 JSON 渲染为结构化表格
+  - ✅ 正确：`<!--event:decompose_result-->\n{...}\n\n现在开始执行 Phase 1...`
+  - ❌ 错误：`<!--event:decompose_result-->\n{...}\n\n## 📊 步骤分解完成\n| 步骤 | ... |`（重复！前端已渲染表格）
+- 指针示例：
+  - `✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
+  - `✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
 
 ### 8.3 交接契约（Report 末尾，独立 JSON 代码块）
 Report 末尾**必须**以独立 JSON 代码块输出 summary 契约：
