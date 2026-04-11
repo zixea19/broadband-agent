@@ -71,8 +71,8 @@ instance/
 # Sphinx documentation
 docs/_build/
 
-# Project docs (design documents, not for version control)
-docs/
+# Sphinx build artifacts
+# Note: docs/ directory is tracked (contains frontend_data_contract.md etc.)
 
 # Runtime data (SQLite, logs)
 data/

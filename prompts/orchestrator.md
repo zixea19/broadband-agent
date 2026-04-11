@@ -162,7 +162,7 @@ Provisioning 实例全部返回后，Orchestrator 用 Markdown 组装：
 <基于执行结果的建议>
 ```
 
-**指针 vs 载荷的汇总纪律**（与 provisioning.md §3 Step 4、insight.md §5 对齐）：
+**指针 vs 载荷的汇总纪律**（与 provisioning.md §3 Step 4、insight.md §8 输出路由协议对齐）：
 - ❌ 禁止复写 Skill stdout 的**载荷主体**（完整 YAML/JSON 配置、完整 Markdown 章节、完整 ECharts option、下发日志明细、数据表行）— 载荷已由 UI 事件层直接渲染为独立消息块对用户可见
 - ✅ 允许并鼓励引用**指针级信息**（PON 口 ID、评分 / 阈值、图片 / 文件路径、配置 ID、状态码、数量统计），用户靠这些感知流程
 - ✅ Provisioning 返回的**结构化交接契约**（如中间态 mock 评分摘要、评分 gating JSON）原样保留

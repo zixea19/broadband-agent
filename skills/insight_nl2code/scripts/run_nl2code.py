@@ -10,7 +10,9 @@
         "query_config": {三元组},
         "table_level": "day" | "minute",
         "data_path": "mock",
-        "code_prompt": "取 CEI_score 最低的 3 个 portUuid"  // 可选，仅用于返回描述
+        "code_prompt": "取 CEI_score 最低的 3 个 portUuid",  // 可选，仅用于返回描述
+        "phase_id": 1,                         // 可选；由 InsightAgent 传入，用于前端关联
+        "step_id": 1                           // 可选；由 InsightAgent 传入，用于前端关联
     }
 
 输出（stdout）：JSON 字符串，形如
@@ -22,7 +24,9 @@
         "description": "NL2Code 分析完成: ...",
         "fix_warnings": [...],
         "data_shape": [row, col],
-        "code": "<原代码 echo，便于复盘>"
+        "code": "<原代码 echo，便于复盘>",
+        "phase_id": int | null,
+        "step_id": int | null
     }
 
 沙箱安全措施：AST 校验 + builtins 白名单（禁止 import / open / exec / 魔术属性）。
@@ -39,12 +43,17 @@ try:
     import ce_insight_core as cic
     from ce_insight_core.sandbox import summarize_nl2code_result
 except ImportError as exc:
-    print(json.dumps({
-        "status": "error",
-        "skill": "insight_nl2code",
-        "op": "run_nl2code",
-        "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=True))
+    print(
+        json.dumps(
+            {
+                "status": "error",
+                "skill": "insight_nl2code",
+                "op": "run_nl2code",
+                "error": f"ce_insight_core 未安装: {exc}",
+            },
+            ensure_ascii=True,
+        )
+    )
     sys.exit(1)
 
 
@@ -61,13 +70,14 @@ def _safe_parse_json(raw: str) -> dict:
             return json.loads(stripped)
         except json.JSONDecodeError:
             pass
-    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', raw)
+    repaired = re.sub(r"(?<=[{,])\s*([a-zA-Z_]\w*)\s*:", r' "\1":', raw)
     try:
         return json.loads(repaired)
     except json.JSONDecodeError:
         pass
     try:
         from json_repair import repair_json
+
         return json.loads(repair_json(raw, return_objects=False))
     except (ImportError, Exception):
         pass
@@ -85,6 +95,7 @@ def _resolve_data_path(table_level: str) -> str:
     """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
     try:
         import yaml
+
         config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
         if config_path.exists():
             with open(config_path, "r", encoding="utf-8") as f:
@@ -146,7 +157,7 @@ def run(payload_json: str) -> str:
     serialized = summarize_nl2code_result(raw_result)
     description = _build_description(serialized, code_prompt)
 
-    output = {
+    output: dict[str, Any] = {
         "status": "ok",
         "skill": "insight_nl2code",
         "op": "run_nl2code",
@@ -155,6 +166,8 @@ def run(payload_json: str) -> str:
         "fix_warnings": fix_warnings,
         "data_shape": list(df.shape),
         "code": code,
+        "phase_id": payload.get("phase_id"),
+        "step_id": payload.get("step_id"),
     }
     return json.dumps(output, ensure_ascii=True, default=_json_default)
 
@@ -175,17 +188,20 @@ def _build_description(serialized: dict[str, Any], code_prompt: str) -> str:
 
 
 def _err(msg: str, code: str = "") -> str:
-    return json.dumps({
-        "status": "error",
-        "skill": "insight_nl2code",
-        "op": "run_nl2code",
-        "error": msg,
-        "code": code,
-    }, ensure_ascii=True)
+    return json.dumps(
+        {
+            "status": "error",
+            "skill": "insight_nl2code",
+            "op": "run_nl2code",
+            "error": msg,
+            "code": code,
+        },
+        ensure_ascii=True,
+    )
 
 
 def _json_default(obj: Any) -> Any:
-    import datetime
+
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
     if hasattr(obj, "item"):

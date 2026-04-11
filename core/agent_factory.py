@@ -3,7 +3,8 @@
 架构：
     OrchestratorTeam (leader, coordinate 模式)
       ├─ PlanningAgent         (goal_parsing + plan_design + plan_review)
-      ├─ InsightAgent          (data_insight + report_rendering)
+      ├─ InsightAgent          (insight_plan + insight_decompose + insight_query
+      │                         + insight_nl2code + insight_reflect + insight_report)
       ├─ ProvisioningWifiAgent (wifi_simulation)
       ├─ ProvisioningDeliveryAgent (differentiated_delivery)
       └─ ProvisioningCeiChainAgent (cei_pipeline + fault_diagnosis + remote_optimization)
@@ -15,14 +16,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from loguru import logger
-
 from agno.agent import Agent
 from agno.db.sqlite.sqlite import SqliteDb
 from agno.skills import Skills
 from agno.skills.loaders.local import LocalSkills
 from agno.team import Team
 from agno.team.team import TeamMode
+from loguru import logger
 
 from core.model_loader import create_model
 

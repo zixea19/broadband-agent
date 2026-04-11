@@ -63,7 +63,7 @@
 - **significance ∈ [0, 1]** — 结果显著性；< 0.3 可在报告中折叠
 - **description** — 文字描述（可能是 str 或 dict，含 `summary` 键时优先取 summary）
 - **filter_data** — 供后续步骤筛选的原始记录（InsightAgent 可据此提取 `found_entities`）
-- **chart_configs** — ECharts 结构（`chart_type` + 标准 ECharts 字段）；脚本透传给前端，**禁止改写**
+- **chart_configs** — ECharts option JSON（`chart_type` + 标准 ECharts 字段）；**禁止改写**，原样透传
 
 ## 指标方向判断
 

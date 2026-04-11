@@ -81,7 +81,7 @@ def render_tool_call(
     if inputs is not None:
         meta_parts.append(f"**输入参数**:\n```json\n{_format_json(inputs)}\n```")
 
-    stdout_body: Optional[str] = None       # 非空则追加展开块
+    stdout_body: Optional[str] = None  # 非空则追加展开块
     stdout_is_markdown = False
 
     if outputs is not None:
@@ -215,13 +215,32 @@ def _render_event_reflect(data: dict) -> str:
     return f"  🔄 Phase {pid} 反思: **{choice}** — {reason}"
 
 
-def _render_event_done(_data: dict) -> str:
-    return "✅ 洞察分析完成"
+def _render_event_decompose_result(data: dict) -> str:
+    """将 <!--event:decompose_result--> JSON 渲染为步骤分解摘要表。"""
+    pid = data.get("phase_id", "?")
+    total = data.get("total_steps", 0)
+    steps = data.get("steps", [])
+    if not steps:
+        return f"📋 Phase {pid} 分解完成 ({total} 步)"
+    rows = ["| 步骤 | 洞察类型 | 目的 |", "|------|----------|------|"]
+    for s in steps:
+        sid = s.get("step", "?")
+        types = ", ".join(s.get("insight_types", []))
+        rationale = s.get("rationale", "")
+        rows.append(f"| Step {sid} | `{types}` | {rationale} |")
+    return f"📋 **Phase {pid} 分解** ({total} 步)\n\n" + "\n".join(rows)
+
+
+def _render_event_done(data: dict) -> str:
+    total_phases = data.get("total_phases", "?")
+    total_steps = data.get("total_steps", "?")
+    return f"✅ 洞察分析完成 (共 {total_phases} 阶段, {total_steps} 步)"
 
 
 # 事件类型 → 渲染函数映射
 _EVENT_RENDERERS = {
     "plan": _render_event_plan,
+    "decompose_result": _render_event_decompose_result,
     "phase_start": _render_event_phase_start,
     "step_result": _render_event_step_result,
     "reflect": _render_event_reflect,
@@ -234,6 +253,9 @@ def _parse_member_content(raw: str) -> str:
 
     使用 json.JSONDecoder.raw_decode 精确定位 JSON 边界，
     支持任意深度嵌套的 JSON 对象。普通 Markdown 文本保持原样。
+
+    流式容错：当 content_delta 切断 JSON 导致 raw_decode 失败时，
+    保留标记头和残片作为 pending 文本（不丢弃），等下次拼接后重新解析。
     """
     decoder = json.JSONDecoder()
     parts: list[str] = []
@@ -241,7 +263,7 @@ def _parse_member_content(raw: str) -> str:
 
     for m in _EVENT_MARKER_HEAD_RE.finditer(raw):
         # 保留标记之前的普通文本
-        before = raw[pos:m.start()]
+        before = raw[pos : m.start()]
         if before.strip():
             parts.append(before)
 
@@ -263,16 +285,22 @@ def _parse_member_content(raw: str) -> str:
                 if renderer:
                     rendered = renderer(data)
             except (json.JSONDecodeError, TypeError):
-                pass  # JSON 解析失败，跳过该标记
+                # 流式 delta 可能切断 JSON — 保留标记头+残片，
+                # 等下次 _parse_member_content 被调用时（拼接更多 delta 后）重新解析。
+                # 不消费任何内容，pos 保持在标记之前。
+                parts.append(raw[m.start() :])
+                pos = len(raw)
+                break
 
         if rendered:
             parts.append(rendered)
         pos = json_end
 
     # 追加剩余文本
-    tail = raw[pos:]
-    if tail.strip():
-        parts.append(tail)
+    if pos < len(raw):
+        tail = raw[pos:]
+        if tail.strip():
+            parts.append(tail)
 
     result = "\n\n".join(parts)
     result = re.sub(r"\n{3,}", "\n\n", result).strip()
@@ -285,18 +313,28 @@ def render_member_content(content: str, member: Optional[str] = None) -> Dict[st
     自动识别 InsightAgent 的 <!--event:xxx--> 协议标记并结构化渲染。
     普通 Markdown 内容保持原样。
 
+    InsightAgent 的核心内容（plan 表格、phase 进度、step 结果）用户最想直接看到，
+    因此 member == "insight" 时**不添加 metadata.title**，内容默认展开。
+
     Args:
         content: SubAgent 生成的文本内容
         member: SubAgent 名字（如 "insight"），用于标题显示
     """
-    title = "📝 SubAgent 回复"
-    if member:
-        title = f"📝 [{_display_agent(member)}] 回复"
-
     # 解析协议标记
     rendered = _parse_member_content(content)
     if not rendered:
         rendered = "(处理中...)"
+
+    # InsightAgent 内容不折叠 — 用户需要直接看到分析进展
+    if member == "insight":
+        return {
+            "role": "assistant",
+            "content": rendered,
+        }
+
+    title = "📝 SubAgent 回复"
+    if member:
+        title = f"📝 [{_display_agent(member)}] 回复"
 
     return {
         "role": "assistant",
