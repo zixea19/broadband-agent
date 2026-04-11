@@ -189,35 +189,6 @@ class Tracer:
             is_leader=is_leader,
         )
 
-    # ─── 流事件全量记录 (每个 agno 事件都调用) ─────────────────────────
-
-    def stream_event(
-        self,
-        raw_event_type: str,
-        *,
-        agent: str = "",
-        is_leader: bool = False,
-        content: Any = None,
-        tool_name: str = "",
-        tool_args: Any = None,
-        tool_result: Any = None,
-    ) -> None:
-        """记录 agno 流事件 — 用于完整重建 agent 交互过程。
-
-        每个事件类型 (ReasoningContentDelta / ToolCallStarted / RunContent 等)
-        都调用一次，不论前端是否渲染。
-        """
-        payload: dict[str, Any] = {"raw_event": raw_event_type}
-        if content is not None:
-            payload["content"] = str(content)
-        if tool_name:
-            payload["tool_name"] = tool_name
-        if tool_args is not None:
-            payload["tool_args"] = tool_args
-        if tool_result is not None:
-            payload["tool_result"] = tool_result
-        self.trace("stream_event", payload, agent=agent, is_leader=is_leader)
-
     # ─── 思考 ────────────────────────────────────────────────────────
 
     def thinking(self, content: str, *, agent: str = "", is_leader: bool = False) -> None:
