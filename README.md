@@ -1,184 +1,166 @@
-# Broadband Agent Demo
+# 家宽网络调优智能助手
 
-家宽网络调优智能助手的 **端到端 Demo 仓库**，包含：
+基于 [agno](https://github.com/agno-agi/agno) 框架构建的家宽网络调优场景多智能体系统，采用 **Team (coordinate 模式) + 14 个业务 Skills** 的分层架构。
 
-- **`backend/`** — 基于 [agno](https://github.com/agno-agi/agno) 框架的多智能体后端（Team + 10 个业务 Skills）
-- **`frontend/`** — 基于 Vite + React + Ant Design 的暗色操作台，支持 SSE 流式对话与 Agent 结果可视化
+## 功能特性
 
-两端可独立运行，也可联调；前端自带完整 Mock 数据，**无后端依赖也能完整演示所有功能**。
+支持三类任务入口：
 
----
+1. **综合目标** — 用户描述业务目标，PlanningAgent 追问画像 → 产出分段方案 → 并行派发多个 Provisioning 实例执行
+2. **数据洞察** — InsightAgent 按 Plan → Decompose → Execute → Reflect → Report 五阶段产出数据 / 归因 / ECharts 图表 / Markdown 报告，结果可回流 Planning 生成优化方案
+3. **单点功能** — Orchestrator 关键词路由直达对应 Provisioning 实例（WIFI 仿真 / 差异化承载 / 故障定界 / 远程操作 / CEI 权重配置）
 
-## 项目定位
-
-面向网络运维工程师的 AI Agent 操作台：用户通过自然语言描述目标或故障现象，Agent 负责：
-
-1. 追问并澄清用户意图
-2. 调用网络数据、执行诊断、下发配置
-3. 将步骤、思考过程、图表与 Markdown 报告以**流式**方式呈现到前端
-
----
-
-## 整体架构
+## 架构
 
 ```
-┌──────────────────────────┐    SSE 流式对话    ┌──────────────────────────┐
-│   frontend/ (React)      │ ◄───────────────► │   backend/ (agno Team)   │
-│                          │                    │                          │
-│  - 会话列表 / 对话界面     │   REST + SSE      │  OrchestratorTeam        │
-│  - 步骤卡 / 结论 / 图表    │                    │    ├─ PlanningAgent      │
-│  - MSW Mock（离线演示）    │                    │    ├─ InsightAgent       │
-│                          │                    │    └─ 3 × ProvisioningAgent │
-└──────────────────────────┘                    └──────────────────────────┘
-                                                           │
-                                                           ▼
-                                                   10 业务 Skills
-                                                (plan_design / data_insight /
-                                                 fault_diagnosis / cei_pipeline
-                                                 / wifi_simulation ...)
+OrchestratorTeam (leader, coordinate 模式)
+  ├─ PlanningAgent            (goal_parsing + plan_design + plan_review)
+  ├─ InsightAgent             (insight_plan + insight_decompose + insight_query
+  ���                            + insight_nl2code + insight_reflect + insight_report)
+  ├─ ProvisioningWifiAgent    (wifi_simulation)              ← 单 Skill 内部 4 步
+  ├─ ProvisioningDeliveryAgent (differentiated_delivery)
+  └─ ProvisioningCeiChainAgent (cei_pipeline + fault_diagnosis + remote_optimization)
+                                                             ← 条件串行 workflow
 ```
 
-前后端通过 `frontend/docs/03_API.md` 中定义的接口契约对接，核心是一条 SSE 流传输 `thinking / step_start / sub_step / text / render / done` 等事件类型。
+3 个 Provisioning 实例**共享** `prompts/provisioning.md`，通过 `description` 字段注入各自的功能目标。
 
----
+### 业务 Skill 设计模式
 
-## 快速开始
-
-### 前置要求
-
-| 工具 | 版本 |
-|------|------|
-| Node.js | >= 20 |
-| pnpm | >= 9 |
-| Python | >= 3.11 |
-| pip / venv | 最新版 |
-
----
-
-### 方式一：仅前端 Mock 模式（推荐首次体验）
-
-前端自带 MSW Mock，**无需启动后端**即可完整演示所有界面与交互：
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-浏览器打开 http://localhost:5173 ，即可：
-
-- 查看 4 条 Mock 会话（含图像 / 数据洞察 / 普通对话 / 空会话）
-- 发送消息体验 SSE 流式对话（步骤卡逐条出现 + 结论流式追加）
-- 右侧面板展示拓扑图、4 张 ECharts 图表、Markdown 报告
-
-> Mock 模式由 `frontend/.env.development` 中 `VITE_USE_MOCK=true` 控制。
-
----
-
-### 方式二：启动后端
-
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-export OPENAI_API_KEY="your-api-key"
-
-# 启动后端服务（具体入口见 backend/README.md）
-```
-
-> 注：`backend/ui/` 目录下有基于 Gradio 的临时 UI，后续会删除，请以 `frontend/` 为准。
-
----
-
-### 方式三：前后端联调
-
-1. 按方式二启动后端，确认 API 可访问
-2. 修改前端环境变量切到真实后端：
-
-   ```bash
-   # frontend/.env.development
-   VITE_USE_MOCK=false
-   VITE_API_BASE=http://localhost:8080/api
-   ```
-
-3. 重启前端 `pnpm dev`，即可与真实 Agent 对话
-
----
-
-## 目录结构
-
-```
-broadband-agent-demo/
-├── backend/                  # 多智能体后端
-│   ├── configs/              # 模型 / Agent / 下游系统配置
-│   ├── core/                 # Agent factory / session / observability
-│   ├── prompts/              # 4 份 Agent 作业手册
-│   ├── skills/               # 10 个业务 Skills
-│   ├── fae_poc/              # FAE 平台对接 POC
-│   ├── tests/
-│   └── README.md             # 后端完整文档
-│
-├── frontend/                 # Web 操作台
-│   ├── docs/                 # 6 份前端文档 (PRD / UI / API / Tech / Guide / Mock)
-│   │   └── mock/             # 完整 Mock JSON 数据
-│   ├── src/
-│   │   ├── pages/Workspace/  # 三栏主界面 (NavBar / LeftPanel / RightPanel)
-│   │   ├── store/            # Zustand 状态管理
-│   │   ├── api/              # axios + SSE fetch 封装
-│   │   ├── utils/sseParser.ts # EventSource 协议解析
-│   │   ├── mocks/            # MSW handlers + SSE 回放
-│   │   └── types/            # 前端类型定义
-│   └── vite.config.ts
-│
-└── README.md                 # 本文件
-```
-
----
-
-## 文档索引
-
-### 前端
-- [`frontend/docs/01_PRD.md`](frontend/docs/01_PRD.md) — 产品需求
-- [`frontend/docs/02_UI_SPEC.md`](frontend/docs/02_UI_SPEC.md) — 界面规格
-- [`frontend/docs/03_API.md`](frontend/docs/03_API.md) — 前后端接口契约（**前后端对接的单一事实源**）
-- [`frontend/docs/04_TECH.md`](frontend/docs/04_TECH.md) — 技术栈与目录约束
-- [`frontend/docs/05_DEVELOPMENT_GUIDE.md`](frontend/docs/05_DEVELOPMENT_GUIDE.md) — 7 阶段开发指南
-- [`frontend/docs/06_MOCK_DATA.md`](frontend/docs/06_MOCK_DATA.md) — Mock 数据说明
-
-### 后端
-- [`backend/README.md`](backend/README.md) — 架构、Skill 设计范式、快速开始
-- [`backend/CLAUDE.md`](backend/CLAUDE.md) — 开发者（或 AI Agent）协作指南
-
----
+- **`plan_design`**：Instructional 范式 — 纯 SKILL.md + few-shot 样例，**无脚本**，由 LLM 直接生成分段 Markdown 方案
+- **`cei_pipeline / remote_optimization`**：Tool Wrapper 范式 — 封装 FAE 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini
+- **`fault_diagnosis / differentiated_delivery`**：Generator 范式 — SKILL.md 声明参数 schema，Jinja2 模板纯参数填空，**无业务规则分支**（业务规则已上移到 PlanningAgent）
+- **`goal_parsing / plan_review`**：Inversion + Reviewer — 有状态/确定性任务保留脚本
+- **`insight_*`**（6 个 Skill）：Pipeline — Plan → [Decompose → Execute → Reflect] × N Phase → Report 驱动，接入 `ce_insight_core` 真实计算内核（三元组查询 + 12 种洞察函数 + NL2Code 沙箱）
+- **`wifi_simulation`**：Pipeline — 单脚本内部 3+1 步（户型图处理 → 信号强度仿真 → 网络性能仿真，选点可选）
 
 ## 技术栈
 
-### Backend
+- Python 3.11 + [uv](https://docs.astral.sh/uv/) (包管理) + agno >= 2.5.14
+- Gradio (Web UI，流式事件处理 + SubAgent 徽章)
+- loguru (应用日志) + SQLite (会话持久化 + 完整轨迹存储) + JSONL (按天归档 trace)
+- Jinja2 (配置模板渲染)
+- pandas / numpy / scipy / scikit-learn (数据洞察科学计算栈)
 
-- Python 3.11 · agno >= 2.5.14
-- loguru（应用日志）· SQLite（会话持久化与业务追踪）
-- Jinja2（配置模板渲染）
+## 快速开始
 
-### Frontend
+### 使用 uv（推荐）
 
-- React 18 · TypeScript 5 · Vite 5
-- Ant Design 5（强制 Dark 主题）
-- Zustand（状态管理）· axios（REST）· 原生 fetch + ReadableStream（SSE）
-- ECharts 5（数据可视化）· react-markdown + remark-gfm（报告渲染）
-- MSW 2（Mock Service Worker）
+```bash
+# 安装全部依赖（含 vendor/ce_insight_core editable 安装）
+uv sync
 
----
+# 安装开发依赖（pytest + ruff）
+uv sync --group dev
 
-## Demo 亮点
+# 设置 API Key
+export OPENAI_API_KEY="your-api-key"
 
-- **零后端依赖演示** — MSW Mock 覆盖所有接口，包括 SSE 流式回放，`pnpm dev` 一条命令完整跑通
-- **三种典型 Agent 场景** — 图像展示（拓扑图排查）/ 数据洞察（多图表 + Markdown 周报）/ 普通对话
-- **完整 SSE 事件协议** — `thinking / step_start / sub_step / step_end / text / render / done / error` 八类事件，支持流式中断与错误恢复
-- **前后端契约驱动** — `docs/03_API.md` 是前后端联调的单一事实源，类型定义、Mock 数据、真实接口三者对齐
+# 启动应用
+uv run python ui/app.py
+```
 
----
+### 使用 pip
 
-## License
+```bash
+pip install -r requirements.txt
+export OPENAI_API_KEY="your-api-key"
+python ui/app.py
+```
 
-MIT — 见 [`backend/LICENSE`](backend/LICENSE)
+### 企业代理环境
+
+如果启动时报 `Couldn't start the app because 'http://localhost:7860/gradio_api/startup-events' failed (code 504)`，说明公司代理拦截了 Gradio 的 localhost 自检请求。启动前设置：
+
+```bash
+# Linux / macOS
+export NO_PROXY="localhost,127.0.0.1"
+
+# Windows PowerShell
+$env:NO_PROXY="localhost,127.0.0.1"
+```
+
+> 注意：当前 `server_name="0.0.0.0"` 会监听所有网卡，同网段的其他人可以通过你的 IP 访问。如果需要限制为仅本机访问，将 `ui/app.py` 中的 `server_name` 改为 `"127.0.0.1"`。
+
+访问 http://localhost:7860 开始使用。
+
+### vendor 子包更新
+
+`vendor/ce_insight_core/` 以 **editable** 模式安装（`[tool.uv.sources]` 声明了 `editable = true`）。日常开发：
+
+- **修改 Python 源码**（`vendor/ce_insight_core/src/` 下的 `.py` 文件）→ **无需重新安装**，改动自动生效
+- **修改 `pyproject.toml`**（新增依赖 / 改版本号 / 改 entry points）→ 需要重新执行 `uv sync`
+- **从上游同步新版本** → `uv sync` 会重新解析依赖关系
+
+## 项目结构
+
+```
+├── pyproject.toml          # 项目依赖声明 (uv 规范源)
+├── .python-version         # Python 版本锁定 (uv sync 使用)
+├── requirements.txt        # pip 兼容依赖 (指向 pyproject.toml 为规范源)
+├── configs/
+│   ├── model.yaml          # 模型 provider/endpoint
+│   └── agents.yaml         # Team + 5 个 SubAgent 配置
+├── prompts/
+│   ├── orchestrator.md     # Team leader 作业手册
+│   ├── planning.md         # PlanningAgent 作业手册
+│   ├── insight.md          # InsightAgent 作业手册
+│   └── provisioning.md     # 3 个 Provisioning 实例共享的作业手册
+├── skills/                 # 14 个业务 Skill (LocalSkills 自动扫描)
+│   ├── goal_parsing/       # 槽位追问引擎
+│   ├── plan_design/        # 方案设计 (Instructional, 无脚本)
+│   ├── plan_review/        # 方案评审 (violations + recommendations)
+│   ├── cei_pipeline/       # CEI 权重配置下发 (Tool Wrapper, 对接 FAE 真实接口)
+│   ├── fault_diagnosis/    # 故障诊断配置
+│   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
+│   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow)
+│   ├── wifi_simulation/    # WIFI 4 步仿真
+│   ├── insight_plan/       # 洞察规划 (Instructional, MacroPlan 生成)
+│   ├── insight_decompose/  # Phase 分解 (Tool Wrapper, list_schema.py + 参考文件)
+│   ├── insight_query/      # 洞察执行 (Tool Wrapper, run_insight.py + run_query.py)
+│   ├── insight_nl2code/    # NL2Code 沙箱 (Tool Wrapper, run_nl2code.py)
+│   ├── insight_reflect/    # Phase 反思 (Instructional, A/B/C/D 决策)
+│   └── insight_report/     # 洞察报告渲染 (Generator, render_report.py)
+├── vendor/
+│   └── ce_insight_core/    # 洞察计算内核 (editable 安装, 三元组查询 + 12 种洞察策略)
+├── fae_poc/                # FAE 平台共享基础设施 (NCELogin + config.ini, .gitignore)
+├── core/
+│   ├── agent_factory.py    # create_team() — 装配 Team + 5 SubAgent
+│   ├── session_manager.py  # session_hash → Team + Tracer 隔离
+│   ├── model_loader.py     # 模型实例化 + prompt tracer 注入
+│   └── observability/      # SQLite DAO + loguru sink + JSONL tracer
+├── ui/
+│   ├── app.py              # Gradio 入口 (Team 流式事件处理)
+│   └── chat_renderer.py    # SubAgent 徽章 + 工具调用折叠/展开渲染
+└── tests/test_smoke.py     # 冒烟测试
+```
+
+## 可观测性
+
+完整的轨迹存储体系，覆盖 agent/subagent 交互全流程：
+
+- **SQLite 数据库** (`data/sessions.db`)：4 张表 — `sessions`（会话生命周期）、`messages`（用户/assistant 消息，含 SubAgent 回复）、`tool_calls`（Skill 调用记录，含 latency_ms + message_id 关联 + 成功/失败状态）、`traces`（全量事件轨迹，含 agent_name 索引列）
+- **JSONL 日志** (`data/logs/trace/YYYY-MM-DD.jsonl`)：按天归档，完整记录不截断，每条含 agent / is_leader 字段，并行 SubAgent 通过 agent 字段天然隔离
+- **应用日志** (`data/logs/app/`)：loguru 按天轮转，7 天保留
+
+DB 和 JSONL 双写：任一写入失败不影响主流程。Tracer 通过 monkey-patch 注入 Team leader 和所有 member 的 model，自动拦截 LLM 调用记录完整 prompt。
+
+## 配置说明
+
+- `pyproject.toml` — 项目依赖声明（uv 规范源），含 ruff / pytest 配置
+- `configs/model.yaml` — 模型 provider / endpoint / role_map
+- `configs/agents.yaml` — Team + 5 个 SubAgent 的 prompt + skills 子集 + description + memory
+- `skills/goal_parsing/references/slot_schema.yaml` — 综合目标槽位定义
+- `skills/plan_design/references/examples.md` — 方案设计 few-shot 样例
+
+## 测试
+
+```bash
+# uv
+uv run pytest tests/test_smoke.py -v
+
+# pip
+pytest tests/test_smoke.py -v
+```
+
+49 项冒烟测试，覆盖配置加载、14 个 Skill 脚本执行、UI 渲染（流式事件处理 + 思考隔离 + 工具调用折叠）、Team 装配（5 SubAgent + 正确 Skill 子集）、可观测性（SQLite schema + trace 双写）。
