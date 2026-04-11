@@ -284,6 +284,9 @@ def _parse_member_content(raw: str) -> str:
                 renderer = _EVENT_RENDERERS.get(event_type)
                 if renderer:
                     rendered = renderer(data)
+                else:
+                    # 未知事件类型：保留为可读提示而非静默吞没
+                    rendered = f"📎 `{event_type}`: {json.dumps(data, ensure_ascii=False)[:200]}"
             except (json.JSONDecodeError, TypeError):
                 # 流式 delta 可能切断 JSON — 保留标记头+残片，
                 # 等下次 _parse_member_content 被调用时（拼接更多 delta 后）重新解析。

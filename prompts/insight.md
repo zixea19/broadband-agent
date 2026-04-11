@@ -54,22 +54,22 @@ Report (1 次)
 | Reflect (每 Phase) | Phase 结束后决定 A/B/C/D，更新剩余 Phase | 反思决策 | 按需读 `insight_reflect` 的 `reflect_rubric.md` |
 | Report | 汇总所有 Phase 结果 → Markdown + summary JSON | 报告 + 交接契约 | `insight_report`（`render_report.py`） |
 
-### 统一事件协议
+### 事件输出协议
 
-所有 `<!--event:xxx-->` 标记在 **assistant 消息中**输出，前端依赖这些标记渲染流程进度。
+所有 `<!--event:xxx-->` 标记在 **assistant 消息中**输出。
 
-| 事件 | 触发时机 | 通道 | 消费者 | 渲染方式 |
-|---|---|---|---|---|
-| `plan` | Plan 阶段完成后 | assistant 文本 | 用户 | Markdown 表格（阶段概览） |
-| `decompose_result` | 每 Phase Decompose 后 | assistant 文本 | 用户 | 步骤分解摘要表 |
-| `phase_start` | 每 Phase Execute 开始前 | assistant 文本 | 用户 | 状态行（当前 Phase 名+里程碑） |
-| `step_result` | 每 Step 脚本执行后 | assistant 文本 | 用户 | 结果摘要卡片 |
-| `reflect` | 每 Phase 所有 Step 完成后 | assistant 文本 | 用户 | 决策标签 (A/B/C/D) |
-| `done` | Report 阶段完成后 | assistant 文本 | 用户 | 完成标记 + 统计摘要 |
-| stdout JSON | 每次 tool call 返回 | ToolCallCompleted | 前端 | 展开块（含 chart_configs JSON 数据附件） |
-| summary JSON | Report 末尾 | assistant 代码块 | Orchestrator | 不渲染，供下游 PlanningAgent 消费 |
+| 事件 | 触发时机 | JSON 结构（关���字段） |
+|---|---|---|
+| `plan` | Plan 阶段完成后 | `goal`, `total_phases`, `phases[]` |
+| `decompose_result` | 每 Phase Decompose 后 | `phase_id`, `total_steps`, `steps[]` |
+| `phase_start` | 每 Phase Execute 开始前 | `phase_id`, `name`, `status` |
+| `step_result` | 每 Step 脚本执行后 | `phase_id`, `step_id`, `insight_type`, `significance`, `summary`, `found_entities` |
+| `reflect` | 每 Phase 所有 Step 完成后 | `phase_id`, `choice`, `reason` |
+| `done` | Report 阶段完成后 | `total_phases`, `total_steps`, `total_charts` |
 
-**已移除的事件**：`<!--event:report-->` — 其数据与 stdout + step_result 完全重复，且前端未实现渲染器，改为由 `render_report.py` stdout + `<!--event:done-->` 替代。
+另外两类输出不使用事件标记：
+- **脚本 stdout**：调用 Skill 脚本后的返回值（含 `chart_configs` 等）会被自动展示，无需在 assistant 文本中复述
+- **summary JSON**：Report 末尾的独立 JSON 代码块，供 Orchestrator 提取
 
 **执行时序**：`plan` → [`decompose_result` → `phase_start` → 调脚本 → `step_result` × M → `reflect`] × N Phase → `done`
 
@@ -203,9 +203,9 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
 
 🔴 **切记**：`dimensions` 格式错误是最常见的导致下钻失效的原因。如果你看到返回的 `data_shape` 行数跟全量数据一样多（如 3857 行），说明过滤没有生效，请检查 dimensions 格式。
 
-### 🔴 前端事件输出（强制，不可跳过）
+### 🔴 事件输出（强制，不可跳过）
 
-每步执行时**必须**按 §2「统一事件协议」输出对应的 `<!--event:xxx-->` 标记。Execute 阶段涉及 3 种事件：
+每步执行时**必须**按 §2「事件输出协议」输出对应的 `<!--event:xxx-->` 标记。Execute 阶段涉及 3 种事件：
 
 1. **`phase_start`** — 每个 Phase 开始前输出（示例见 §2 事件表）
 2. **`step_result`** — 每个 Step 脚本调用完成后输出，**必须包含 `phase_id` 和 `step_id`**：
@@ -272,7 +272,7 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 ### 处理 StepResult
 - `significance < 0.3` 的结果可以不在最终报告中高亮，但仍要保留在 step_results
 - `filter_data` / `found_entities` 必须原样保留（供后续 step 下钻 + summary JSON）
-- `chart_configs` 必须原样保留（包含完整 ECharts option JSON，当前以折叠块展示在 ToolCallCompleted 产出中）
+- `chart_configs` 必须原样保留（包含完整 ECharts option JSON，由工具调用返回值自动展示）
 - 如果 `fix_warnings` 非空，必须在该 step 的 description 末尾加上警告提示
 
 ### Step 间的实体传递
@@ -306,9 +306,9 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 
 Report 阶段只产出 **3 样东西**（不多不少）：
 
-1. **`render_report.py` stdout**（面向用户的 Markdown 报告，通道 1 ToolCallCompleted 自动展示）
-2. **`<!--event:done-->`**（面向前端的流程结束信号，通道 2 assistant 文本）
-3. **summary JSON 代码块**（面向 Orchestrator 的交接契约，通道 2 assistant 文本）
+1. **`render_report.py` stdout** — Markdown 报告（由工具调用��动展示）
+2. **`<!--event:done-->`** — 流程结束信号（assistant 文本）
+3. **summary JSON 代码块** — 交接契约（assistant 文本，独立代码块）
 
 ### 步骤
 
@@ -361,35 +361,28 @@ Report 阶段只产出 **3 样东西**（不多不少）：
 
 6. **输出 summary JSON 代码块**（见 §8 交接契约格式）
 
-🔴 **不要**再输出 `<!--event:report-->` — 该事件已移除（其数据与 stdout + step_result 完全重复，前端未实现渲染器）
+🔴 **不要**输出 `<!--event:report-->` — 该事件不存在
 
 ---
 
-## 8. 输出路由协议（关键）
+## 8. 输出契约（关键）
 
-InsightAgent 的输出服务 **3 个消费者**，通过不同通道送达。理解通道归属是避免重复/遗漏的关键。
+InsightAgent 产出 3 类输出，各自独立、互不替代：
 
-### 通道 1 — ToolCallCompleted stdout（面向前端 UI）
-- **内容**：`run_insight.py` / `run_nl2code.py` / `render_report.py` 的 stdout JSON
-- **渲染方式**：`chat_renderer.render_tool_call()` 自动拆为折叠审计块 + 展开产出块
-- **包含**：`chart_configs`（ECharts option JSON 数据附件）、`filter_data`、报告 Markdown
-- **注意**：stdout JSON 中的 `phase_id` / `step_id` 字段可用于关联通道 2 的 `step_result` 事件
+### 8.1 脚本产出（自动展示，无需复述）
+- 调用 `run_insight.py` / `run_nl2code.py` / `render_report.py` 的 stdout JSON 会被自动展示
+- 包含 `chart_configs`（ECharts option JSON）、`filter_data`、报告 Markdown
+- stdout 中的 `phase_id` / `step_id` 字段用于关联 step_result 事件
+- **禁止**在 assistant 文本中复述脚本 stdout 的完整内容
 
-### 通道 2 — assistant 文本中的事件标记（面向前端 + Orchestrator）
-- **内容**：`<!--event:xxx-->` 标记（见 §2 统一事件协议表）
-- **渲染方式**：`chat_renderer._parse_member_content()` 解析为结构化 Markdown
+### 8.2 事件标记（assistant 文本中输出）
+- 按 §2「事件输出协议」在 assistant 文本中输出 `<!--event:xxx-->` + JSON
+- 同时用**指针**（一句话陈述）帮助感知流程进展：
+  - 例：`✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
+  - 例：`✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
 
-### 通道 3 — delegate_task_to_member 返回值（面向 Orchestrator）
-- **内容**：InsightAgent 的完整 assistant 文本（含事件标记 + summary JSON 代码块）
-- **消费者**：Orchestrator 从中提取 summary JSON，用于注入 PlanningAgent
-
-### 指针（必填，一句话陈述）
-在 assistant 里用指针简短陈述产出要点，帮助用户和 Orchestrator 感知流程：
-- 例：`✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
-- 例：`✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
-
-### 结构化交接契约（必填，独立 JSON 代码块，供 Orchestrator 消费）
-用于 Orchestrator 在用户要求生成方案时注入 PlanningAgent 作为 hints，**必须**以独立 JSON 代码块原样输出：
+### 8.3 交接契约（Report 末尾，独立 JSON 代码块）
+Report 末尾**必须**以独立 JSON 代码块输出 summary 契约：
 
 ```json
 {
@@ -421,20 +414,16 @@ InsightAgent 的输出服务 **3 个消费者**，通过不同通道送达。理
 - **root_cause_fields** — L3 Phase 中 `OutstandingMax` / `OutlierDetection` 命中的细化字段名
 - **reflection_log** — 每个 Phase 反思的 `choice` + `reason`，便于 Orchestrator 理解分析路径
 
-Orchestrator 在用户要求生成方案时，把本摘要作为 hints 注入 PlanningAgent。
+此摘要供 Orchestrator 在后续流程中使用（如注入 PlanningAgent 作为 hints）。
 
 ---
 
-## 9. D10 停下等待用户确认
+## 9. 完成后停下
 
-完成报告后，**停下等待用户下一步**（由 Orchestrator 把关，你只需产出报告）：
+完成报告后，**停下等待用户下一步**：
 
-1. 呈现报告 + 摘要 JSON
-2. **禁止**自动进入 Planning 派发 Provisioning
-3. 用户选择：
-   - 只看报告 → 流程结束
-   - 要生成方案 → Orchestrator 调用 Planning，注入 summary 作为 hints
-   - 要换角度分析 → 再次调用本 Agent
+1. 输出报告 + summary JSON 代码块 + `<!--event:done-->`
+2. **禁止**自动进入方案设计或执行（后续流程不属于本 Agent 职责）
 
 ---
 

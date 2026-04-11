@@ -39,8 +39,13 @@ class SessionManager:
         if session_hash in self._sessions:
             return self._sessions[session_hash]
 
-        # 创建 DB 记录
+        # 创建 DB 记录（失败时重试一次）
         db_sid = db.create_session(session_hash)
+        if db_sid is None:
+            logger.warning(f"create_session 首次失败，重试: {session_hash[:8]}...")
+            db_sid = db.create_session(session_hash)
+        if db_sid is None:
+            logger.error(f"create_session 最终失败: {session_hash[:8]}... — DB traces 将被跳过")
 
         # 创建 Team (leader + 5 members)
         team = create_team(session_id=session_hash)

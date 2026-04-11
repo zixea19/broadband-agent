@@ -43,7 +43,17 @@ get_skill_script(
 
 ## 4. 目标解析流程（源 B）
 
-- hints 已包含 `scope_indicator` → `guarantee_target`、`peak_time_window` → `time_window`、`has_complaints` → `complaint_history`
+Insight summary 字段到 Planning 槽位的显式映射：
+
+| Insight summary 字段 | Planning 对应 slot | 说明 |
+|---|---|---|
+| `scope_indicator` | `guarantee_target` | `single_pon`→单PON保障, `multi_pon`→多PON联防, `regional`→区域治理 |
+| `peak_time_window` | `time_window` | 如 `"19:00-22:00"`, 为 null 时不设时段限制 |
+| `has_complaints` | `complaint_history` | 布尔值，决定是否启用投诉关联路径 |
+| `priority_pons` | 受影响设备列表 | 直接使用，无需追问 |
+| `distinct_issues` | 问题分类 | 如 `["ODN 光功率异常", "WiFi 干扰高"]`，用于决定方案段落启用 |
+| `root_cause_fields` | 根因指标 | 如 `["oltRxPowerHighCnt"]`，辅助方案细化 |
+
 - `user_type / package_type / scenario` 区域性保障通常不需要
 - hints 足够时零追问；关键业务字段缺失且无法从 hints 推断才追问 1 次
 

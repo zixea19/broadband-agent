@@ -28,6 +28,19 @@ from ui.chat_renderer import (
 # 初始化日志
 setup_logger()
 
+_MAX_DB_FIELD_LEN = 4000
+
+
+def _safe_truncate(val: Any, max_len: int = _MAX_DB_FIELD_LEN) -> str:
+    """JSON 安全截断 — 避免 str()[:N] 损坏 JSON 结构。"""
+    try:
+        s = json.dumps(val, ensure_ascii=False, default=str) if not isinstance(val, str) else val
+    except (TypeError, ValueError):
+        s = str(val)
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 3] + "..."
+
 
 # ─── 事件解析工具 ──────────────────────────────────────────────────────
 #
@@ -120,6 +133,20 @@ async def chat_handler(
     # per-member content 缓冲区 — 用于流式展示 SubAgent 的文本回复
     member_content_buffers: Dict[str, str] = {}
 
+    def _build_streaming_tail() -> List[Dict[str, Any]]:
+        """构造流式 yield 时附加的全部 pending 内容（解决 member 内容闪烁问题）。
+
+        每次 yield 时，除了 history 之外，还要附加所有 pending 的 member buffer
+        和 leader content，避免某个 source 的 yield 覆盖其他 source 的内容导致闪烁。
+        """
+        tail: List[Dict[str, Any]] = []
+        for mid, mc in member_content_buffers.items():
+            if mc:
+                tail.append(render_member_content(mc, member=mid))
+        if full_content:
+            tail.append(render_response(full_content))
+        return tail
+
     def _agent_id(sid: Optional[str], leader: bool) -> str:
         """从 source_id + is_leader 推导 agent 标识符。"""
         if leader:
@@ -176,7 +203,11 @@ async def chat_handler(
                     history = _flush_reasoning(history)
                     reasoning_source = source_id
                 reasoning_buffer += delta
-                yield history + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                yield (
+                    history
+                    + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                    + _build_streaming_tail()
+                )
 
             elif event_type == "ReasoningCompleted":
                 # 只 flush 匹配 source 的 buffer, 防止误伤其他 member 的 in-flight 思考
@@ -198,8 +229,10 @@ async def chat_handler(
                     )
                     ctx.tracer.tool_invoke(tool_name, tool_args, agent=agent, is_leader=is_leader)
                     tool_label_source = source_id if not is_leader else None
-                    yield history + render_tool_call(
-                        tool_name, inputs=tool_args, member=tool_label_source
+                    yield (
+                        history
+                        + render_tool_call(tool_name, inputs=tool_args, member=tool_label_source)
+                        + _build_streaming_tail()
                     )
 
             # ---- 工具调用完成 ----
@@ -218,8 +251,8 @@ async def chat_handler(
                         db.insert_tool_call(
                             ctx.db_session_id,
                             skill_name=tool_name,
-                            inputs_json=str(tool_args) if tool_args else "",
-                            outputs_json=str(tool_result)[:4000] if tool_result else "",
+                            inputs_json=_safe_truncate(tool_args) if tool_args else "",
+                            outputs_json=_safe_truncate(tool_result) if tool_result else "",
                             status="ok",
                         )
                     # delegate_task_to_member 去重: 如果 member content 已通过
@@ -265,7 +298,11 @@ async def chat_handler(
                         history = _flush_reasoning(history)
                         reasoning_source = source_id
                     reasoning_buffer += reasoning_delta
-                    yield history + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                    yield (
+                        history
+                        + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                        + _build_streaming_tail()
+                    )
 
                 content_delta = getattr(event, "content", None)
                 if content_delta is not None and reasoning_buffer and source_id == reasoning_source:
@@ -274,11 +311,11 @@ async def chat_handler(
                 if content_delta:
                     if is_leader:
                         full_content += str(content_delta)
-                        yield history + [render_response(full_content)]
                     elif source_id:
                         buf = member_content_buffers.get(source_id, "") + str(content_delta)
                         member_content_buffers[source_id] = buf
-                        yield history + [render_member_content(buf, member=source_id)]
+                    # 统一使用 _build_streaming_tail 渲染所有 pending 内容
+                    yield history + _build_streaming_tail()
 
             # ---- 运行完成 ----
             elif event_type == "RunCompleted":
@@ -306,6 +343,27 @@ async def chat_handler(
                         source_id or "unknown",
                         content=str(final_content) if final_content else "",
                     )
+
+            # ---- 工具/Agent 错误事件 — 向用户可见化 ----
+            elif event_type in ("ToolCallError", "ToolCallFailed"):
+                tool = getattr(event, "tool", None)
+                error_content = getattr(event, "content", "") or getattr(event, "error", "")
+                tool_name = getattr(tool, "tool_name", "unknown") if tool else "unknown"
+                ctx.tracer.stream_event(
+                    raw_event_type,
+                    agent=agent,
+                    is_leader=is_leader,
+                    tool_name=tool_name,
+                    content=str(error_content)[:500],
+                )
+                history = history + [
+                    {
+                        "role": "assistant",
+                        "metadata": {"title": f"⚠️ 工具执行失败: {tool_name}"},
+                        "content": str(error_content)[:500] or "未知错误",
+                    }
+                ]
+                yield history
 
             # ---- 未识别事件 — 全量记录到 trace 供调试 ----
             else:
@@ -478,6 +536,14 @@ def create_app() -> gr.Blocks:
             return [], {"session_hash": new_hash}
 
         new_session_btn.click(fn=new_session, outputs=[chatbot, session_state])
+
+        # Session 生命周期关闭 — 页面卸载时销毁会话，写入 ended_at
+        def _on_unload(sess_state):
+            sh = (sess_state or {}).get("session_hash")
+            if sh:
+                session_manager.destroy(sh)
+
+        app.unload(_on_unload, inputs=[session_state])
 
     return app
 

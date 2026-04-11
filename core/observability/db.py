@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS traces (
     created_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_traces_session ON traces(session_id, created_at);
 """
 
 
@@ -99,15 +103,14 @@ class Database:
 
     # ---- sessions ----
     def create_session(self, session_hash: str, user_agent: str = "") -> Optional[int]:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             cur = conn.execute(
                 "INSERT INTO sessions (session_hash, created_at, user_agent) VALUES (?, ?, ?)",
                 (session_hash, _now_iso(), user_agent),
             )
             conn.commit()
             sid = cur.lastrowid
-            conn.close()
             logger.debug(f"create_session 成功: session_hash={session_hash[:8]}..., db_sid={sid}")
             return sid
         except Exception:
@@ -115,49 +118,54 @@ class Database:
                 f"create_session 失败: session_hash={session_hash[:8]}..., db_path={self.db_path}"
             )
             return None
+        finally:
+            conn.close()
 
     def end_session(self, session_hash: str, task_type: str = "") -> None:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             conn.execute(
                 "UPDATE sessions SET ended_at=?, task_type=? WHERE session_hash=?",
                 (_now_iso(), task_type, session_hash),
             )
             conn.commit()
-            conn.close()
         except Exception:
             logger.exception("end_session 失败")
+        finally:
+            conn.close()
 
     def get_session_id(self, session_hash: str) -> Optional[int]:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             row = conn.execute(
                 "SELECT id FROM sessions WHERE session_hash=?", (session_hash,)
             ).fetchone()
-            conn.close()
             return row["id"] if row else None
         except Exception:
             logger.exception("get_session_id 失败")
             return None
+        finally:
+            conn.close()
 
     # ---- messages ----
     def insert_message(
         self, session_id: int, role: str, content: str, parent_msg_id: Optional[int] = None
     ) -> Optional[int]:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             cur = conn.execute(
                 "INSERT INTO messages (session_id, role, content, created_at, parent_msg_id) VALUES (?, ?, ?, ?, ?)",
                 (session_id, role, content, _now_iso(), parent_msg_id),
             )
             conn.commit()
             mid = cur.lastrowid
-            conn.close()
             logger.debug(f"insert_message 成功: session_id={session_id}, role={role}, mid={mid}")
             return mid
         except Exception:
             logger.exception(f"insert_message 失败: session_id={session_id}, role={role}")
             return None
+        finally:
+            conn.close()
 
     # ---- tool_calls ----
     def insert_tool_call(
@@ -170,8 +178,8 @@ class Database:
         status: str = "ok",
         message_id: Optional[int] = None,
     ) -> None:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             conn.execute(
                 "INSERT INTO tool_calls (session_id, message_id, skill_name, inputs_json, outputs_json, latency_ms, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -186,25 +194,27 @@ class Database:
                 ),
             )
             conn.commit()
-            conn.close()
         except Exception:
             logger.exception("insert_tool_call 失败")
+        finally:
+            conn.close()
 
     # ---- traces ----
     def insert_trace(
         self, session_id: int, session_hash: str, event_type: str, payload: Any = None
     ) -> None:
+        conn = self._get_conn()
         try:
             payload_str = json.dumps(payload, ensure_ascii=False, default=str) if payload else "{}"
-            conn = self._get_conn()
             conn.execute(
                 "INSERT INTO traces (session_id, session_hash, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
                 (session_id, session_hash, event_type, payload_str, _now_iso()),
             )
             conn.commit()
-            conn.close()
         except Exception:
             logger.exception("insert_trace 失败")
+        finally:
+            conn.close()
 
 
 # 全局单例

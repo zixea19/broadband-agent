@@ -9,10 +9,11 @@
 """
 
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+from loguru import logger
 
 from core.observability.db import db
 
@@ -59,7 +60,7 @@ def _write_jsonl(
         with open(filepath, "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except Exception:
-        print(f"[tracer] JSONL write failed: {event_type}", file=sys.stderr)
+        logger.warning(f"JSONL write failed: {event_type}")
 
 
 class Tracer:
@@ -90,7 +91,7 @@ class Tracer:
                 db.insert_trace(self.db_session_id, self.session_hash, event_type, enriched)
             _write_jsonl(event_type, self.session_hash, payload, agent=agent, is_leader=is_leader)
         except Exception:
-            print(f"[tracer] trace write failed: {event_type}", file=sys.stderr)
+            logger.warning(f"trace write failed: {event_type}")
 
     # ─── 用户请求/最终回复 ────────────────────────────────────────────
 
