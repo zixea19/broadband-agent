@@ -29,8 +29,22 @@ def _safe_serialize(obj: Any) -> Any:
 
     处理 agno 内部对象（ToolExecution、dataclass、Pydantic BaseModel 等），
     避免 json.dumps 在 default=str 之前因嵌套容器中的不可序列化对象而失败。
+
+    对 JSON 字符串（如 agno agent_skills 返回值）做 parse → 返回 dict/list，
+    使外层 json.dumps(ensure_ascii=False) 能正确保留中文字符，消除 \\uXXXX 转义。
     """
-    if obj is None or isinstance(obj, (bool, int, float, str)):
+    if obj is None or isinstance(obj, (bool, int, float)):
+        return obj
+    if isinstance(obj, str):
+        # agno skill 工具返回 JSON 字符串（ensure_ascii=True），
+        # 解析为 dict/list 后由外层 json.dumps(ensure_ascii=False) 重新序列化，
+        # 消除内层 \uXXXX 转义。
+        try:
+            parsed = json.loads(obj)
+            if isinstance(parsed, (dict, list)):
+                return _safe_serialize(parsed)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
         return obj
     if isinstance(obj, dict):
         return {k: _safe_serialize(v) for k, v in obj.items()}

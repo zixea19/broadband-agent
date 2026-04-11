@@ -81,6 +81,43 @@ def _extract_source_id(event: Any, is_leader: bool) -> Optional[str]:
     return None
 
 
+def _ensure_json_str(data: Any) -> str:
+    """将任意数据序列化为 JSON 字符串（ensure_ascii=False）。
+
+    当 data 已是 JSON 字符串时（如 agno get_skill_script 返回值），
+    先解析为 dict 再重新序列化，消除内部的 unicode 转义（\\uXXXX → 中文）。
+    """
+    if not data:
+        return ""
+    if isinstance(data, str):
+        try:
+            parsed = json.loads(data)
+            return json.dumps(parsed, ensure_ascii=False, default=str)
+        except (json.JSONDecodeError, TypeError):
+            return data
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
+# agno 框架生命周期事件 — 正常流程的内部状态信号，不记入业务 trace。
+# 覆盖 Agent 级和 Team 级（带 Team 前缀），_normalize_event_type 不在此处使用。
+_AGNO_LIFECYCLE_EVENTS = frozenset({
+    # Agent 级
+    "RunStarted", "RunContentCompleted", "RunContinued",
+    "ModelRequestStarted", "ModelRequestCompleted",
+    "ReasoningStarted", "ReasoningCompleted",
+    "MemoryUpdateStarted", "MemoryUpdateCompleted",
+    "SessionSummaryStarted", "SessionSummaryCompleted",
+    "CompressionStarted", "CompressionCompleted",
+    "FollowupsStarted", "FollowupsCompleted",
+    # Team 级 (带 Team 前缀)
+    "TeamRunStarted", "TeamRunContentCompleted", "TeamRunContinued",
+    "TeamModelRequestStarted", "TeamModelRequestCompleted",
+    "TeamReasoningStarted", "TeamReasoningCompleted",
+    "TeamCompressionStarted", "TeamCompressionCompleted",
+    "TeamFollowupsStarted", "TeamFollowupsCompleted",
+})
+
+
 async def chat_handler(
     message: str,
     history: List[Dict[str, Any]],
@@ -182,7 +219,7 @@ async def chat_handler(
                     # 保证徽章不会插到旧思考的中间
                     history = _flush_reasoning(history)
                     history = history + [render_member_badge(source_id)]
-                    yield history
+                    yield history + _build_streaming_tail()
 
             # ---- 思考/推理 (ReasoningContentDelta 事件) ----
             if event_type == "ReasoningContentDelta":
@@ -204,12 +241,19 @@ async def chat_handler(
                 # 只 flush 匹配 source 的 buffer, 防止误伤其他 member 的 in-flight 思考
                 if reasoning_buffer and source_id == reasoning_source:
                     history = _flush_reasoning(history)
-                    yield history
+                    yield history + _build_streaming_tail()
 
             # ---- 工具调用开始 ----
             elif event_type == "ToolCallStarted":
                 if reasoning_buffer and source_id == reasoning_source:
                     history = _flush_reasoning(history)
+                # 工具调用前，将该 member 已积累的文本固化到 history，
+                # 实现 "content → tool → content → tool" 的时序交错渲染，
+                # 避免所有 member content 堆积到 streaming tail 末尾。
+                if source_id and not is_leader and source_id in member_content_buffers:
+                    _mc = member_content_buffers.pop(source_id)
+                    if _mc:
+                        history = history + [render_member_content(_mc, member=source_id)]
                 tool = getattr(event, "tool", None)
                 if tool:
                     tool_name = getattr(tool, "tool_name", "") or getattr(
@@ -252,16 +296,8 @@ async def chat_handler(
                         is_leader=is_leader,
                     )
                     if ctx.db_session_id:
-                        _inputs_str = (
-                            json.dumps(tool_args, ensure_ascii=False, default=str)
-                            if tool_args and not isinstance(tool_args, str)
-                            else (tool_args or "")
-                        )
-                        _outputs_str = (
-                            json.dumps(tool_result, ensure_ascii=False, default=str)
-                            if tool_result and not isinstance(tool_result, str)
-                            else (tool_result or "")
-                        )
+                        _inputs_str = _ensure_json_str(tool_args)
+                        _outputs_str = _ensure_json_str(tool_result)
                         db.insert_tool_call(
                             ctx.db_session_id,
                             skill_name=tool_name,
@@ -297,6 +333,7 @@ async def chat_handler(
                                 outputs=f"✅ {_member_id} 已完成 (返回 {_result_len} 字符，内容见上方 SubAgent 回复)",
                                 member=None,
                             )
+                            yield history + _build_streaming_tail()
                             continue
                     tool_label_source = source_id if not is_leader else None
                     history = history + render_tool_call(
@@ -305,6 +342,7 @@ async def chat_handler(
                         outputs=tool_result,
                         member=tool_label_source,
                     )
+                    yield history + _build_streaming_tail()
 
             # ---- 内容流 (RunContent) ----
             elif event_type == "RunContent":
@@ -354,7 +392,7 @@ async def chat_handler(
                                     mc,
                                     parent_msg_id=user_msg_id,
                                 )
-                            yield history
+                            yield history + _build_streaming_tail()
                     final_content = getattr(event, "content", None)
                     ctx.tracer.member_completed(
                         source_id or "unknown",
@@ -393,11 +431,11 @@ async def chat_handler(
                         "content": _display_error or "未知错误",
                     }
                 ]
-                yield history
+                yield history + _build_streaming_tail()
 
-            # ---- 未识别事件 — 记录到 trace 供调试 ----
+            # ---- 未识别事件 — 仅记录真正意外的事件类型 ----
             else:
-                if raw_event_type:
+                if raw_event_type and raw_event_type not in _AGNO_LIFECYCLE_EVENTS:
                     ctx.tracer.unhandled_event(
                         raw_event_type, source_id=agent, is_leader=is_leader
                     )

@@ -38,7 +38,7 @@ except ImportError as exc:
                 "op": "list_schema",
                 "error": f"ce_insight_core 未安装: {exc}",
             },
-            ensure_ascii=True,
+            ensure_ascii=False,
         )
     )
     sys.exit(1)
@@ -113,7 +113,7 @@ def run(payload_json: str) -> str:
             "schema_markdown": schema_md,
             "all_fields": all_fields,
         },
-        ensure_ascii=True,
+        ensure_ascii=False,
     )
 
 
@@ -125,7 +125,7 @@ def _err(msg: str) -> str:
             "op": "list_schema",
             "error": msg,
         },
-        ensure_ascii=True,
+        ensure_ascii=False,
     )
 
 

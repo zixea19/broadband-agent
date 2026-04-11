@@ -51,7 +51,7 @@ except ImportError as exc:
                 "op": "run_nl2code",
                 "error": f"ce_insight_core 未安装: {exc}",
             },
-            ensure_ascii=True,
+            ensure_ascii=False,
         )
     )
     sys.exit(1)
@@ -169,7 +169,7 @@ def run(payload_json: str) -> str:
         "phase_id": payload.get("phase_id"),
         "step_id": payload.get("step_id"),
     }
-    return json.dumps(output, ensure_ascii=True, default=_json_default)
+    return json.dumps(output, ensure_ascii=False, default=_json_default)
 
 
 def _build_description(serialized: dict[str, Any], code_prompt: str) -> str:
@@ -196,7 +196,7 @@ def _err(msg: str, code: str = "") -> str:
             "error": msg,
             "code": code,
         },
-        ensure_ascii=True,
+        ensure_ascii=False,
     )
 
 
