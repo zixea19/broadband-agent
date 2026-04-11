@@ -547,7 +547,7 @@ class ImageProcessor:
 
         json_path = Path(self.config.output_dir) / "json" / f"{image_path.stem}.json"
         json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(json_path, "w") as f:
+        with open(json_path, "w", encoding="utf-8") as f:
             json.dump(generate_coordinate(walls), f)
 
         return walls
@@ -896,7 +896,7 @@ def process_floorplan(
                 processor.process_single_image(input_image)
                 json_path = output_dir / "temp" / "json" / f"{input_image.stem}.json"
                 if json_path.exists():
-                    with open(json_path) as f:
+                    with open(json_path, encoding="utf-8") as f:
                         walls_json = json.load(f)
                     source = "deep_learning"
                     print("  ✓ 深度学习模型处理完成")

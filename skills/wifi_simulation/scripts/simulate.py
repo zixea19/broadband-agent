@@ -114,7 +114,7 @@ def _run_step2_signal(
         scale = 0.05
         grid_info_path = output_base / "floorplan" / "grid_info.json"
         if grid_info_path.exists():
-            with open(grid_info_path) as f:
+            with open(grid_info_path, encoding="utf-8") as f:
                 info = json.load(f)
                 scale = info.get("scale", 0.05)
 
@@ -221,7 +221,7 @@ def _run_step3_network(
 
         metrics_path = network_output / "network_metrics.json"
         if metrics_path.exists():
-            with open(metrics_path) as f:
+            with open(metrics_path, encoding="utf-8") as f:
                 net_metrics = json.load(f)
             metrics = net_metrics
             step["result"] = {

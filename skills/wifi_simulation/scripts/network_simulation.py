@@ -252,13 +252,13 @@ def load_data(
 
     scale = 0.1
     if grid_info_path and grid_info_path.exists():
-        with open(grid_info_path, "r") as f:
+        with open(grid_info_path, "r", encoding="utf-8") as f:
             info = json.load(f)
             scale = info.get("scale", 0.1)
     else:
         auto_info_path = grid_path.parent / "grid_info.json"
         if auto_info_path.exists():
-            with open(auto_info_path, "r") as f:
+            with open(auto_info_path, "r", encoding="utf-8") as f:
                 info = json.load(f)
                 scale = info.get("scale", 0.1)
 

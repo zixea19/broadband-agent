@@ -594,13 +594,13 @@ def simulate(
 
     scale = 0.1
     if grid_info and grid_info.exists():
-        with open(grid_info, "r") as f:
+        with open(grid_info, "r", encoding="utf-8") as f:
             info = json.load(f)
             scale = info.get("scale", 0.1)
     else:
         info_path = grid.parent / "grid_info.json"
         if info_path.exists():
-            with open(info_path, "r") as f:
+            with open(info_path, "r", encoding="utf-8") as f:
                 info = json.load(f)
                 scale = info.get("scale", 0.1)
 
