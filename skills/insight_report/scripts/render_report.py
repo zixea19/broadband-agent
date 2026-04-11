@@ -33,13 +33,14 @@ def _safe_parse_json(raw: str) -> dict:
             return json.loads(stripped)
         except json.JSONDecodeError:
             pass
-    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', raw)
+    repaired = re.sub(r"(?<=[{,])\s*([a-zA-Z_]\w*)\s*:", r' "\1":', raw)
     try:
         return json.loads(repaired)
     except json.JSONDecodeError:
         pass
     try:
         from json_repair import repair_json
+
         return json.loads(repair_json(raw, return_objects=False))
     except (ImportError, Exception):
         pass

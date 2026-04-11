@@ -33,12 +33,17 @@ from typing import Any
 try:
     import ce_insight_core as cic
 except ImportError as exc:
-    print(json.dumps({
-        "status": "error",
-        "skill": "insight_query",
-        "op": "run_query",
-        "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=True))
+    print(
+        json.dumps(
+            {
+                "status": "error",
+                "skill": "insight_query",
+                "op": "run_query",
+                "error": f"ce_insight_core 未安装: {exc}",
+            },
+            ensure_ascii=True,
+        )
+    )
     sys.exit(1)
 
 _MAX_RECORDS = 15
@@ -57,13 +62,14 @@ def _safe_parse_json(raw: str) -> dict:
             return json.loads(stripped)
         except json.JSONDecodeError:
             pass
-    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', raw)
+    repaired = re.sub(r"(?<=[{,])\s*([a-zA-Z_]\w*)\s*:", r' "\1":', raw)
     try:
         return json.loads(repaired)
     except json.JSONDecodeError:
         pass
     try:
         from json_repair import repair_json
+
         return json.loads(repair_json(raw, return_objects=False))
     except (ImportError, Exception):
         pass
@@ -81,6 +87,7 @@ def _resolve_data_path(table_level: str) -> str:
     """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
     try:
         import yaml
+
         config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
         if config_path.exists():
             with open(config_path, "r", encoding="utf-8") as f:
@@ -165,17 +172,20 @@ def _ok(**kwargs: Any) -> str:
 
 
 def _err(msg: str) -> str:
-    return json.dumps({
-        "status": "error",
-        "skill": "insight_query",
-        "op": "run_query",
-        "error": msg,
-    }, ensure_ascii=True)
+    return json.dumps(
+        {
+            "status": "error",
+            "skill": "insight_query",
+            "op": "run_query",
+            "error": msg,
+        },
+        ensure_ascii=True,
+    )
 
 
 def _json_default(obj: Any) -> Any:
     """安全兜底：处理 pandas / numpy / datetime 等 json 默认不支持的类型。"""
-    import datetime
+
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
     if hasattr(obj, "item"):  # numpy scalar

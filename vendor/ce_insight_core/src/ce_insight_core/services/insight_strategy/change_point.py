@@ -4,16 +4,17 @@
 """
 
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from scipy import stats
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 logger = logging.getLogger(__name__)
 
 
 class ChangePointStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -78,14 +79,16 @@ class ChangePointStrategy(InsightStrategy):
             before = float(np.mean(values[:cp]))
             after = float(np.mean(values[cp:]))
             diff = after - before
-            cp_details.append({
-                "index": cp,
-                "time": time_labels[cp],
-                "before_mean": round(before, 2),
-                "after_mean": round(after, 2),
-                "diff": round(diff, 2),
-                "direction": "上升" if diff > 0 else "下降",
-            })
+            cp_details.append(
+                {
+                    "index": cp,
+                    "time": time_labels[cp],
+                    "before_mean": round(before, 2),
+                    "after_mean": round(after, 2),
+                    "diff": round(diff, 2),
+                    "direction": "上升" if diff > 0 else "下降",
+                }
+            )
 
         # 最显著变点
         best_cp = max(cp_details, key=lambda c: abs(c["diff"]))
@@ -97,13 +100,15 @@ class ChangePointStrategy(InsightStrategy):
         max_ratio = max(abs(c["diff"]) / std_val for c in cp_details) if std_val > 0 else 0
         self._significance_score = float(np.clip(max_ratio / 3, 0, 1))
 
-        time_summary = ", ".join(f"{c['time']}({c['direction']}{abs(c['diff']):.2f})" for c in cp_details[:3])
+        time_summary = ", ".join(
+            f"{c['time']}({c['direction']}{abs(c['diff']):.2f})" for c in cp_details[:3]
+        )
         self._description = {
             "change_points": cp_details,
             "best": best_cp,
             "count": len(cp_details),
             "summary": f"{col} 检测到 {len(cp_details)} 个变点：{time_summary}"
-                       + (f"…等{len(cp_details)}个" if len(cp_details) > 3 else ""),
+            + (f"…等{len(cp_details)}个" if len(cp_details) > 3 else ""),
         }
 
         self._build_chart(col, time_labels, values, cp_details)
@@ -119,8 +124,8 @@ class ChangePointStrategy(InsightStrategy):
         """滑动窗口 t-test 检测"""
         hits = {}
         for i in range(w, n - w):
-            left = y[i - w:i]
-            right = y[i:i + w]
+            left = y[i - w : i]
+            right = y[i : i + w]
             if np.std(left) < 1e-10 and np.std(right) < 1e-10:
                 continue
             try:
@@ -141,7 +146,7 @@ class ChangePointStrategy(InsightStrategy):
             if y[i - 1] != 0:
                 rate = abs((y[i] - y[i - 1]) / y[i - 1])
             else:
-                rate = float('inf') if y[i] != 0 else 0
+                rate = float("inf") if y[i] != 0 else 0
             if rate > threshold:
                 conf = min(0.99, 1 / (1 + 1 / (rate + 1e-10)))
                 hits[i] = conf
@@ -150,8 +155,9 @@ class ChangePointStrategy(InsightStrategy):
     @staticmethod
     def _filter_and_dedup(hits: dict[int, float], n: int, threshold: float = 0.5) -> list[int]:
         """过滤低置信度 + 相邻点去重（保留置信度最高的）"""
-        filtered = sorted([(pos, conf) for pos, conf in hits.items() if conf >= threshold],
-                          key=lambda x: -x[1])
+        filtered = sorted(
+            [(pos, conf) for pos, conf in hits.items() if conf >= threshold], key=lambda x: -x[1]
+        )
         result = []
         min_gap = max(2, n // 10)
         for pos, _ in filtered:
@@ -163,17 +169,27 @@ class ChangePointStrategy(InsightStrategy):
 
     def _build_chart(self, col: str, time_labels: list, values: np.ndarray, cp_details: list):
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_title, base_tooltip,
-            rotated_axis_label, BLUE, HIGHLIGHT_RED, ORANGE, GREEN,
+            BLUE,
+            GREEN,
+            HIGHLIGHT_RED,
+            ORANGE,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         labels = truncate_labels(time_labels, 12)
         n = len(labels)
 
         # 主折线
         main_series = {
-            "name": col, "type": "line", "smooth": True,
+            "name": col,
+            "type": "line",
+            "smooth": True,
             "data": [round(float(v), 2) for v in values],
-            "itemStyle": {"color": BLUE}, "lineStyle": {"color": BLUE},
+            "itemStyle": {"color": BLUE},
+            "lineStyle": {"color": BLUE},
             "symbolSize": 5,
         }
 
@@ -189,10 +205,15 @@ class ChangePointStrategy(InsightStrategy):
             area_data = []
             for c in cp_details:
                 idx = c["index"]
-                area_data.append([
-                    {"xAxis": max(0, idx - 1), "itemStyle": {"color": "rgba(231,111,111,0.08)"}},
-                    {"xAxis": min(n - 1, idx + 1)},
-                ])
+                area_data.append(
+                    [
+                        {
+                            "xAxis": max(0, idx - 1),
+                            "itemStyle": {"color": "rgba(231,111,111,0.08)"},
+                        },
+                        {"xAxis": min(n - 1, idx + 1)},
+                    ]
+                )
             main_series["markArea"] = {"silent": True, "data": area_data}
 
         series = [main_series]
@@ -210,20 +231,28 @@ class ChangePointStrategy(InsightStrategy):
                 for i in range(idx, min(n, idx + max(3, n // 5))):
                     after_data[i] = c["after_mean"]
 
-            series.append({
-                "name": "变点前均值", "type": "line",
-                "data": before_data,
-                "lineStyle": {"type": "dashed", "color": ORANGE, "width": 2},
-                "itemStyle": {"color": ORANGE},
-                "symbol": "none", "connectNulls": False,
-            })
-            series.append({
-                "name": "变点后均值", "type": "line",
-                "data": after_data,
-                "lineStyle": {"type": "dashed", "color": GREEN, "width": 2},
-                "itemStyle": {"color": GREEN},
-                "symbol": "none", "connectNulls": False,
-            })
+            series.append(
+                {
+                    "name": "变点前均值",
+                    "type": "line",
+                    "data": before_data,
+                    "lineStyle": {"type": "dashed", "color": ORANGE, "width": 2},
+                    "itemStyle": {"color": ORANGE},
+                    "symbol": "none",
+                    "connectNulls": False,
+                }
+            )
+            series.append(
+                {
+                    "name": "变点后均值",
+                    "type": "line",
+                    "data": after_data,
+                    "lineStyle": {"type": "dashed", "color": GREEN, "width": 2},
+                    "itemStyle": {"color": GREEN},
+                    "symbol": "none",
+                    "connectNulls": False,
+                }
+            )
 
         cp_count = len(cp_details)
         title = f"{col} 变点检测" + (f" ({cp_count}个变点)" if cp_count else " (无变点)")
@@ -234,8 +263,11 @@ class ChangePointStrategy(InsightStrategy):
             "tooltip": base_tooltip("axis"),
             "legend": {"bottom": 0, "textStyle": {"fontSize": 11}},
             "grid": {"left": "10%", "right": "6%", "bottom": "18%", "top": "16%"},
-            "xAxis": {"type": "category", "data": labels,
-                      "axisLabel": rotated_axis_label(30) if n > 8 else {"fontSize": 11}},
+            "xAxis": {
+                "type": "category",
+                "data": labels,
+                "axisLabel": rotated_axis_label(30) if n > 8 else {"fontSize": 11},
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }

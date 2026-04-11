@@ -2,11 +2,13 @@
 天表 Schema 管理模块
 负责维护天表各维度的 schema 并根据 T0 结果进行剪枝
 """
+
 import logging
 
 logger = logging.getLogger(__name__)
 
 from typing import Dict, Optional
+
 DAY_DIMENSION_SCHEMAS = {
     "core": """
 ## 核心分组字段
@@ -14,7 +16,6 @@ DAY_DIMENSION_SCHEMAS = {
 - date (string): 日期，格式 `"YYYYMMDD"`，示例 `"20250413"`，ORDERED类型
 - gatewayMac (string): ONT设备MAC地址,示例：`"14EB004BA0A0"`，格式：XXXXXXXXXXXX（12个十六进制字符）
 """,
-
     "scores": """
 ## 天表总分字段
 - CEI_score (float): 总体质量得分（8维度加权总分）
@@ -28,7 +29,6 @@ DAY_DIMENSION_SCHEMAS = {
 - STA_score (float): 终端得分
 - Wifi_score (float): WiFi得分
 """,
-
     "Stability_score": """
 ## Stability 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -39,7 +39,6 @@ DAY_DIMENSION_SCHEMAS = {
 | interruption_week_ave                    | 周平均中断时长扣分                             |
 | Stability_score                          | 稳定性维度得分                                 |
 """,
-
     "Gateway_score": """
 ## Gateway 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -56,7 +55,6 @@ DAY_DIMENSION_SCHEMAS = {
 | apExceScore                              | 主从之间异常连接（非光纤连接）比例分数         |
 | Gateway_score                            | nan                                            |
 """,
-
     "ODN_score": """
 ## ODN 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -73,7 +71,6 @@ DAY_DIMENSION_SCHEMAS = {
 | fecScore                                 | FEC越限占比扣分                                |
 | ODN_score                                | ODN维度得分                                    |
 """,
-
     "Rate_score": """
 ## Rate 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -102,7 +99,6 @@ DAY_DIMENSION_SCHEMAS = {
 | meanRxRateScore                          | 平均速率 > 平均速率阈值 的比例扣分             |
 | Rate_score                               | nan                                            |
 """,
-
     "Service_score": """
 ## Service 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -116,7 +112,6 @@ DAY_DIMENSION_SCHEMAS = {
 | generalTcpDepressionTimesPercent         | 通用TCP类质差时长占比                          |
 | Service_score                            | 服务质量维度得分                               |
 """,
-
     "OLT_score": """
 ## OLT 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -131,7 +126,6 @@ DAY_DIMENSION_SCHEMAS = {
 | G10UpPlrScore                            | 10GPON丢包率异常（> 0.001）比例                |
 | OLT_score                                | OLT维度得分                                    |
 """,
-
     "STA_score": """
 ## STA 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -149,7 +143,6 @@ DAY_DIMENSION_SCHEMAS = {
 | isAchievableRateScore                    | 可达速率为0的比例                              |
 | STA_score                                | nan                                            |
 """,
-
     "Wifi_score": """
 ## Wifi 维度详细字段
 | 指标名                                   | 含义                                       |
@@ -181,7 +174,7 @@ DAY_DIMENSION_SCHEMAS = {
 | diagLossScore                            | 五分钟下挂设备数量 > 16 比例                   |
 | diagTimeDelayScore                       | Ping丢包率 > 60% 的比例                        |
 | Wifi_score                               | nan                                            |
-"""
+""",
 }
 
 
@@ -194,8 +187,16 @@ def get_full_day_schema() -> str:
     """
     schema_parts = [DAY_DIMENSION_SCHEMAS["core"], DAY_DIMENSION_SCHEMAS["scores"]]
 
-    for dim in ["Stability_score", "Gateway_score", "ODN_score", "Rate_score",
-                "Service_score", "OLT_score", "STA_score", "Wifi_score"]:
+    for dim in [
+        "Stability_score",
+        "Gateway_score",
+        "ODN_score",
+        "Rate_score",
+        "Service_score",
+        "OLT_score",
+        "STA_score",
+        "Wifi_score",
+    ]:
         schema_parts.append(DAY_DIMENSION_SCHEMAS[dim])
 
     return "\n".join(schema_parts)
@@ -215,6 +216,7 @@ def get_all_day_fields() -> set[str]:
         return _ALL_DAY_FIELDS_CACHE
 
     import re
+
     fields: set[str] = set()
     # 匹配 markdown 表格行: | fieldName | desc |
     table_row_re = re.compile(r"^\|\s*([A-Za-z][A-Za-z0-9_]*)\s*\|")
@@ -282,7 +284,9 @@ def get_pruned_day_schema(t0_result: Optional[Dict]) -> str:
     pruned_schema_len = len(pruned_schema)
     saved_ratio = (1 - pruned_schema_len / full_schema_len) * 100
 
-    logger.info(f"✅ 天表 Schema 剪枝完成：聚焦于 {matched_dimensions}，节省 {saved_ratio:.1f}% token")
+    logger.info(
+        f"✅ 天表 Schema 剪枝完成：聚焦于 {matched_dimensions}，节省 {saved_ratio:.1f}% token"
+    )
 
     return pruned_schema
 
@@ -332,7 +336,9 @@ def _find_dimension_key(problem_dimension: str) -> Optional[str]:
             return key
 
     logger.error(f"❌ 匹配失败: '{problem_dimension}'")
-    logger.error(f"   可用的维度 keys: {[k for k in DAY_DIMENSION_SCHEMAS if k not in ['core', 'scores']]}")
+    logger.error(
+        f"   可用的维度 keys: {[k for k in DAY_DIMENSION_SCHEMAS if k not in ['core', 'scores']]}"
+    )
     return None
 
 

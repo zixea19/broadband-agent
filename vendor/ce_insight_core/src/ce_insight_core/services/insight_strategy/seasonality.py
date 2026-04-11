@@ -2,13 +2,12 @@
 周期性分析：检测时序数据中的周期模式（基于 FFT）。
 """
 
-import pandas as pd
 import numpy as np
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class SeasonalityStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -51,14 +50,20 @@ class SeasonalityStrategy(InsightStrategy):
             "dominant_period": dominant_period,
             "power_ratio": round(power_ratio, 4),
             "summary": f"{col} 主周期约 {dominant_period} 个时间单位，"
-                       f"周期能量占比 {power_ratio:.1%}",
+            f"周期能量占比 {power_ratio:.1%}",
         }
         self._significance_score = float(np.clip(power_ratio, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_title, base_tooltip,
-            rotated_axis_label, BLUE, GREEN, ORANGE,
+            BLUE,
+            GREEN,
+            ORANGE,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         time_labels = truncate_labels(df[group_column].astype(str).tolist(), 12)
         # 三条线：原始值、趋势线、季节性（去趋势）
         trend_line = (slope * x + intercept).round(2).tolist()
@@ -68,26 +73,35 @@ class SeasonalityStrategy(InsightStrategy):
             "tooltip": base_tooltip("axis"),
             "legend": {"bottom": 0, "textStyle": {"fontSize": 11}},
             "grid": {"left": "10%", "right": "6%", "bottom": "18%", "top": "16%"},
-            "xAxis": {"type": "category", "data": time_labels,
-                      "axisLabel": rotated_axis_label(30) if len(time_labels) > 8 else {"fontSize": 11}},
+            "xAxis": {
+                "type": "category",
+                "data": time_labels,
+                "axisLabel": rotated_axis_label(30) if len(time_labels) > 8 else {"fontSize": 11},
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
             "series": [
                 {
-                    "name": "原始值", "type": "line",
+                    "name": "原始值",
+                    "type": "line",
                     "data": [round(float(v), 2) for v in values],
-                    "itemStyle": {"color": BLUE}, "lineStyle": {"color": BLUE},
+                    "itemStyle": {"color": BLUE},
+                    "lineStyle": {"color": BLUE},
                 },
                 {
-                    "name": "趋势", "type": "line",
+                    "name": "趋势",
+                    "type": "line",
                     "data": trend_line,
                     "lineStyle": {"type": "dashed", "color": ORANGE},
-                    "itemStyle": {"color": ORANGE}, "symbol": "none",
+                    "itemStyle": {"color": ORANGE},
+                    "symbol": "none",
                 },
                 {
-                    "name": "季节性（去趋势）", "type": "line",
+                    "name": "季节性（去趋势）",
+                    "type": "line",
                     "data": detrended.round(2).tolist(),
                     "lineStyle": {"color": GREEN, "width": 1},
-                    "itemStyle": {"color": GREEN}, "areaStyle": {"opacity": 0.1},
+                    "itemStyle": {"color": GREEN},
+                    "areaStyle": {"opacity": 0.1},
                 },
             ],
         }

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import math
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -35,7 +34,6 @@ import numpy as np
 import typer
 from matplotlib import pyplot as plt
 from typing_extensions import Annotated
-
 
 # 材质类型定义（用于可视化）
 MATERIAL_COLORS: Dict[int, list] = {
@@ -381,8 +379,7 @@ def analyze_network_metrics(metrics_list: List[NetworkMetrics]) -> dict:
 
     total = len(metrics_list)
     quality_dist = {
-        k: {"count": v, "percentage": round(v / total * 100, 2)}
-        for k, v in quality_counts.items()
+        k: {"count": v, "percentage": round(v / total * 100, 2)} for k, v in quality_counts.items()
     }
 
     return {
@@ -508,20 +505,20 @@ def process_network_simulation(
     print()
 
     tp_stats = stats["throughput"]
-    print(f"吞吐量:")
+    print("吞吐量:")
     print(f"  平均: {tp_stats['mean_mbps']:.1f} Mbps")
     print(f"  中位数: {tp_stats['median_mbps']:.1f} Mbps")
     print(f"  范围: {tp_stats['min_mbps']:.1f} ~ {tp_stats['max_mbps']:.1f} Mbps")
     print()
 
     lat_stats = stats["latency"]
-    print(f"延迟:")
+    print("延迟:")
     print(f"  平均: {lat_stats['mean_ms']:.1f} ms")
     print(f"  中位数: {lat_stats['median_ms']:.1f} ms")
     print()
 
     pl_stats = stats["packet_loss"]
-    print(f"丢包率:")
+    print("丢包率:")
     print(f"  平均: {pl_stats['mean_percent']:.2f}%")
     print(f"  中位数: {pl_stats['median_percent']:.2f}%")
     print()
@@ -535,9 +532,7 @@ def process_network_simulation(
     }
     for quality, data in stats["quality_distribution"].items():
         bar = "█" * int(data["percentage"] / 2)
-        print(
-            f"  {quality_labels.get(quality, quality)}: {data['percentage']:5.1f}% {bar}"
-        )
+        print(f"  {quality_labels.get(quality, quality)}: {data['percentage']:5.1f}% {bar}")
 
     print()
     print("=" * 60)
@@ -558,38 +553,24 @@ app = typer.Typer(help="网络体验仿真：输入信号强度，输出吞吐�
 
 @app.command()
 def simulate(
-    rssi: Annotated[
-        Path, typer.Option("--rssi", "-r", help="RSSI 矩阵文件 (.npy)")
-    ] = ...,
-    grid: Annotated[
-        Path, typer.Option("--grid", "-g", help="栅格地图文件 (.npy)")
-    ] = ...,
-    output_dir: Annotated[
-        Path, typer.Option("--output-dir", "-o", help="输出目录")
-    ] = Path("output/network"),
+    rssi: Annotated[Path, typer.Option("--rssi", "-r", help="RSSI 矩阵文件 (.npy)")] = ...,
+    grid: Annotated[Path, typer.Option("--grid", "-g", help="栅格地图文件 (.npy)")] = ...,
+    output_dir: Annotated[Path, typer.Option("--output-dir", "-o", help="输出目录")] = Path(
+        "output/network"
+    ),
     grid_info: Annotated[
         Optional[Path], typer.Option("--grid-info", help="栅格信息文件 (.json)")
     ] = None,
-    standard: Annotated[
-        str, typer.Option("--standard", "-s", help="WiFi 标准")
-    ] = "wifi6",
-    bandwidth: Annotated[
-        int, typer.Option("--bandwidth", "-b", help="信道带宽 (MHz)")
-    ] = 80,
-    spatial_streams: Annotated[
-        int, typer.Option("--spatial-streams", help="空间流数量")
-    ] = 2,
-    mu_mimo: Annotated[
-        bool, typer.Option("--mu-mimo/--no-mu-mimo", help="启用 MU-MIMO")
-    ] = True,
+    standard: Annotated[str, typer.Option("--standard", "-s", help="WiFi 标准")] = "wifi6",
+    bandwidth: Annotated[int, typer.Option("--bandwidth", "-b", help="信道带宽 (MHz)")] = 80,
+    spatial_streams: Annotated[int, typer.Option("--spatial-streams", help="空间流数量")] = 2,
+    mu_mimo: Annotated[bool, typer.Option("--mu-mimo/--no-mu-mimo", help="启用 MU-MIMO")] = True,
     sta_count: Annotated[int, typer.Option("--sta-count", "-n", help="STA 数量")] = 1,
     interference: Annotated[
         float, typer.Option("--interference", "-i", help="干扰比例 (%)")
     ] = 10.0,
     retry_rate: Annotated[float, typer.Option("--retry-rate", help="重传率 (%)")] = 2.0,
-    visualize: Annotated[
-        bool, typer.Option("--visualize", "-v", help="显示可视化结果")
-    ] = False,
+    visualize: Annotated[bool, typer.Option("--visualize", "-v", help="显示可视化结果")] = False,
 ):
     """基于信号强度矩阵仿真网络性能指标。"""
     process_network_simulation(

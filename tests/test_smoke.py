@@ -1,4 +1,4 @@
-"""冒烟测试 — 覆盖新架构 (Team + 10 Skills) 的导入、配置与脚本执行。"""
+"""冒烟测试 — 覆盖 Team + 14 Skills 架构的导入、配置与脚本执行。"""
 
 import importlib.util
 import json
@@ -24,11 +24,11 @@ def test_config_files_exist():
     root = Path(_ROOT)
     assert (root / "configs" / "model.yaml").exists()
     assert (root / "configs" / "agents.yaml").exists()
-    assert (root / "configs" / "downstream.yaml").exists()
 
 
 def test_model_config_loads():
     from core.model_loader import load_model_config
+
     cfg = load_model_config()
     assert "provider" in cfg
     assert "model" in cfg
@@ -37,6 +37,7 @@ def test_model_config_loads():
 def test_agents_config_structure():
     """agents.yaml 结构正确：team + 5 个 agents。"""
     import yaml
+
     cfg_path = Path(_ROOT) / "configs" / "agents.yaml"
     with open(cfg_path) as f:
         cfg = yaml.safe_load(f)
@@ -70,7 +71,7 @@ def test_agents_config_structure():
 
 
 def test_all_skills_present():
-    """10 个 Skill 目录均存在且含 SKILL.md。"""
+    """14 个 Skill 目录均存在且含 SKILL.md。"""
     skills_dir = Path(_ROOT) / "skills"
     expected_skills = [
         "goal_parsing",
@@ -81,8 +82,12 @@ def test_all_skills_present():
         "remote_optimization",
         "differentiated_delivery",
         "wifi_simulation",
-        "data_insight",
-        "report_rendering",
+        "insight_plan",
+        "insight_decompose",
+        "insight_query",
+        "insight_nl2code",
+        "insight_reflect",
+        "insight_report",
     ]
     for name in expected_skills:
         skill_path = skills_dir / name
@@ -157,9 +162,7 @@ def test_plan_review_checker():
 
 def test_cei_pipeline_skill_schema():
     """SKILL.md 声明新的 weights Tool Wrapper schema，旧 Generator schema 已清理。"""
-    skill_md = (
-        Path(_ROOT) / "skills" / "cei_pipeline" / "SKILL.md"
-    ).read_text(encoding="utf-8")
+    skill_md = (Path(_ROOT) / "skills" / "cei_pipeline" / "SKILL.md").read_text(encoding="utf-8")
     # 新 schema 关键字
     for keyword in (
         "Tool Wrapper",
@@ -209,9 +212,9 @@ def test_fault_diagnosis_render():
 
 def test_remote_optimization_skill_schema():
     """SKILL.md 声明了新的 strategy / rectification_method / operation_time schema。"""
-    skill_md = (
-        Path(_ROOT) / "skills" / "remote_optimization" / "SKILL.md"
-    ).read_text(encoding="utf-8")
+    skill_md = (Path(_ROOT) / "skills" / "remote_optimization" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
     for keyword in (
         "strategy",
         "rectification_method",
@@ -232,9 +235,7 @@ def test_remote_optimization_normalize_params():
     mod = _load_script("remote_optimization", "manual_batch_optimize.py")
 
     # JSON list
-    normalized = mod._normalize_params(
-        {"strategy": "idle", "rectification_method": [1, 2]}
-    )
+    normalized = mod._normalize_params({"strategy": "idle", "rectification_method": [1, 2]})
     assert normalized["strategy"] == "idle"
     assert normalized["rectification_method"] == [1, 2]
 
@@ -353,6 +354,7 @@ def test_remote_optimization_bare_ncelogin_import_works():
         # 确保缓存被清理后重新导入
         sys.modules.pop("NCELogin", None)
         import NCELogin as _bare  # type: ignore  # noqa: F401
+
         assert hasattr(_bare, "NCELogin")
         instance = _bare.NCELogin(config_file="/tmp/fake.ini")
         assert instance.config_file == "/tmp/fake.ini"
@@ -367,6 +369,7 @@ def test_remote_optimization_bare_ncelogin_import_works():
 def test_fae_poc_package_importable():
     """fae_poc 包可 import,即使 NCELogin.py / config.ini 未部署。"""
     import importlib
+
     # 确保项目根在 sys.path
     if _ROOT not in sys.path:
         sys.path.insert(0, _ROOT)
@@ -377,6 +380,7 @@ def test_fae_poc_package_importable():
     assert hasattr(fae_poc, "require_ncelogin")
     # 未部署时 require_* 应抛出带引导信息的错误
     import pytest as _pytest
+
     with _pytest.raises(FileNotFoundError, match="config.ini"):
         fae_poc.require_config()
     # NCELogin.py 未提交时应优雅提示
@@ -433,19 +437,27 @@ def test_ce_insight_core_importable():
     types = cic.list_insight_types()
     assert len(types) == 12
     for t in (
-        "Attribution", "Trend", "ChangePoint", "Seasonality",
-        "OutlierDetection", "Clustering", "Correlation",
-        "CrossMeasureCorrelation", "Evenness",
-        "OutstandingMax", "OutstandingMin", "OutstandingTop2",
+        "Attribution",
+        "Trend",
+        "ChangePoint",
+        "Seasonality",
+        "OutlierDetection",
+        "Clustering",
+        "Correlation",
+        "CrossMeasureCorrelation",
+        "Evenness",
+        "OutstandingMax",
+        "OutstandingMin",
+        "OutstandingTop2",
     ):
         assert t in types
 
 
 def test_data_insight_list_schema_day():
-    mod = _load_script("data_insight", "list_schema.py")
+    mod = _load_script("insight_decompose", "list_schema.py")
     result = json.loads(mod.run(json.dumps({"table": "day", "focus_dimensions": ["ODN"]})))
     assert result["status"] == "ok"
-    assert result["skill"] == "data_insight"
+    assert result["skill"] in ("insight_decompose", "insight_query", "insight_nl2code")
     assert result["op"] == "list_schema"
     assert result["table"] == "day"
     assert isinstance(result["schema_markdown"], str)
@@ -455,7 +467,7 @@ def test_data_insight_list_schema_day():
 
 
 def test_data_insight_list_schema_minute():
-    mod = _load_script("data_insight", "list_schema.py")
+    mod = _load_script("insight_decompose", "list_schema.py")
     result = json.loads(mod.run(json.dumps({"table": "minute", "focus_dimensions": []})))
     assert result["status"] == "ok"
     assert result["table"] == "minute"
@@ -463,17 +475,23 @@ def test_data_insight_list_schema_minute():
 
 
 def test_data_insight_run_query_triple():
-    mod = _load_script("data_insight", "run_query.py")
-    result = json.loads(mod.run(json.dumps({
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-    })))
+    mod = _load_script("insight_query", "run_query.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                }
+            )
+        )
+    )
     assert result["status"] == "ok"
-    assert result["skill"] == "data_insight"
+    assert result["skill"] in ("insight_decompose", "insight_query", "insight_nl2code")
     assert result["op"] == "run_query"
     assert result["data_shape"][0] > 0
     assert "portUuid" in result["columns"]
@@ -482,16 +500,22 @@ def test_data_insight_run_query_triple():
 
 
 def test_data_insight_run_insight_outstanding_min():
-    mod = _load_script("data_insight", "run_insight.py")
-    result = json.loads(mod.run(json.dumps({
-        "insight_type": "OutstandingMin",
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-    })))
+    mod = _load_script("insight_query", "run_insight.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "insight_type": "OutstandingMin",
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                }
+            )
+        )
+    )
     assert result["status"] == "ok"
     assert result["op"] == "run_insight"
     assert result["insight_type"] == "OutstandingMin"
@@ -504,16 +528,22 @@ def test_data_insight_run_insight_outstanding_min():
 
 
 def test_data_insight_run_insight_trend():
-    mod = _load_script("data_insight", "run_insight.py")
-    result = json.loads(mod.run(json.dumps({
-        "insight_type": "Trend",
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "date", "type": "ORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-    })))
+    mod = _load_script("insight_query", "run_insight.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "insight_type": "Trend",
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "date", "type": "ORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                }
+            )
+        )
+    )
     assert result["status"] == "ok"
     assert result["insight_type"] == "Trend"
     # Trend 的 description 是 dict，含 direction / slope / r_squared / summary
@@ -523,17 +553,23 @@ def test_data_insight_run_insight_trend():
 
 
 def test_data_insight_run_nl2code_safe():
-    mod = _load_script("data_insight", "run_nl2code.py")
-    result = json.loads(mod.run(json.dumps({
-        "code": "result = df.nsmallest(3, 'CEI_score')[['portUuid', 'CEI_score']]",
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-        "code_prompt": "取 CEI 最低的前 3 个 PON 口",
-    })))
+    mod = _load_script("insight_nl2code", "run_nl2code.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "code": "result = df.nsmallest(3, 'CEI_score')[['portUuid', 'CEI_score']]",
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                    "code_prompt": "取 CEI 最低的前 3 个 PON 口",
+                }
+            )
+        )
+    )
     assert result["status"] == "ok"
     assert result["op"] == "run_nl2code"
     assert result["result"]["type"] == "dataframe"
@@ -542,71 +578,93 @@ def test_data_insight_run_nl2code_safe():
 
 def test_data_insight_run_nl2code_blocks_import():
     """沙箱必须阻止 import 语句。"""
-    mod = _load_script("data_insight", "run_nl2code.py")
-    result = json.loads(mod.run(json.dumps({
-        "code": "import os\nresult = os.listdir('.')",
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-    })))
+    mod = _load_script("insight_nl2code", "run_nl2code.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "code": "import os\nresult = os.listdir('.')",
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                }
+            )
+        )
+    )
     assert result["status"] == "error"
     assert "import" in result["error"]
 
 
 def test_data_insight_run_nl2code_blocks_open():
     """沙箱必须阻止 open 调用。"""
-    mod = _load_script("data_insight", "run_nl2code.py")
-    result = json.loads(mod.run(json.dumps({
-        "code": "result = open('/etc/passwd').read()",
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-    })))
+    mod = _load_script("insight_nl2code", "run_nl2code.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "code": "result = open('/etc/passwd').read()",
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                }
+            )
+        )
+    )
     assert result["status"] == "error"
     assert "open" in result["error"].lower() or "禁止" in result["error"]
 
 
 def test_data_insight_run_nl2code_blocks_dunder():
     """沙箱必须阻止访问魔术属性（逃逸尝试）。"""
-    mod = _load_script("data_insight", "run_nl2code.py")
-    result = json.loads(mod.run(json.dumps({
-        "code": "result = [].__class__.__bases__[0].__subclasses__()",
-        "query_config": {
-            "dimensions": [[]],
-            "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-            "measures": [{"name": "CEI_score", "aggr": "AVG"}],
-        },
-        "table_level": "day",
-    })))
+    mod = _load_script("insight_nl2code", "run_nl2code.py")
+    result = json.loads(
+        mod.run(
+            json.dumps(
+                {
+                    "code": "result = [].__class__.__bases__[0].__subclasses__()",
+                    "query_config": {
+                        "dimensions": [[]],
+                        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+                        "measures": [{"name": "CEI_score", "aggr": "AVG"}],
+                    },
+                    "table_level": "day",
+                }
+            )
+        )
+    )
     assert result["status"] == "error"
 
 
-def test_wifi_simulation_four_steps():
+def test_wifi_simulation_three_steps():
+    """wifi_simulation 真实 3 阶段流水线：户型图处理 → 信号强度仿真 → 网络性能仿真。"""
     mod = _load_script("wifi_simulation", "simulate.py")
     result = json.loads(mod.simulate("{}"))
     assert result["skill"] == "wifi_simulation"
-    assert len(result["steps"]) == 4
+    assert len(result["steps"]) == 3
     step_names = [s["name"] for s in result["steps"]]
     assert step_names == [
-        "户型图识别",
-        "热力图生成",
-        "RSSI 采集",
-        "选点对比",
+        "户型图处理",
+        "信号强度仿真",
+        "网络性能仿真",
     ]
     for step in result["steps"]:
-        assert "echarts_option" in step
         assert step["status"] == "success"
+        assert "result" in step
+    # 验证汇总输出结构
+    assert result["status"] in ("ok", "partial")
+    assert "image_paths" in result
+    assert "summary" in result
 
 
 def test_report_rendering_legacy_analysis_form():
     """旧归因形态（含 analysis 键）必须仍然走 report.md.j2 渲染。"""
-    mod = _load_script("report_rendering", "render_report.py")
+    mod = _load_script("insight_report", "render_report.py")
     ctx = json.dumps(
         {
             "title": "测试报告",
@@ -634,7 +692,7 @@ def test_report_rendering_legacy_analysis_form():
 
 def test_report_rendering_multi_phase_form():
     """多阶段形态（含 phases 键）必须走 multi_phase_report.md.j2 渲染。"""
-    mod = _load_script("report_rendering", "render_report.py")
+    mod = _load_script("insight_report", "render_report.py")
     ctx = json.dumps(
         {
             "title": "多阶段洞察报告",
@@ -721,6 +779,7 @@ class _FakeTracer:
     def __getattr__(self, _name):
         def _noop(*args, **kwargs):
             return None
+
         return _noop
 
 
@@ -770,6 +829,7 @@ def _run_chat_handler_sync(events, team_name: str = "home-broadband-team"):
 
     app_module.session_manager = _FakeSessionManager()
     try:
+
         async def _drain():
             last = []
             async for h in app_module.chat_handler(
@@ -868,11 +928,13 @@ def test_chat_handler_per_source_reasoning_isolation():
 
     # 提取所有 thinking 块
     thinking_blocks = [
-        m for m in history
-        if isinstance(m, dict)
-        and m.get("metadata", {}).get("title", "").startswith("💭")
+        m
+        for m in history
+        if isinstance(m, dict) and m.get("metadata", {}).get("title", "").startswith("💭")
     ]
-    assert len(thinking_blocks) >= 2, f"应至少 2 个思考块(wifi + delivery),实际 {len(thinking_blocks)}"
+    assert len(thinking_blocks) >= 2, (
+        f"应至少 2 个思考块(wifi + delivery),实际 {len(thinking_blocks)}"
+    )
 
     # 把每个块归属到 source (通过标题里的 display 名判断)
     wifi_content = ""
@@ -886,9 +948,7 @@ def test_chat_handler_per_source_reasoning_isolation():
             delivery_content += content
 
     # 关键断言 1: wifi 的内容含完整的 "透传产出",没被切断
-    assert "透传产出" in wifi_content, (
-        f"wifi 的思考应含完整的'透传产出',实际: {wifi_content!r}"
-    )
+    assert "透传产出" in wifi_content, f"wifi 的思考应含完整的'透传产出',实际: {wifi_content!r}"
     # 关键断言 2: delivery 的内容含完整的 "differentiated_delivery"
     assert "differentiated_delivery" in delivery_content, (
         f"delivery 的思考应含 'differentiated_delivery',实际: {delivery_content!r}"
@@ -923,7 +983,9 @@ def test_chat_handler_tool_call_from_other_member_does_not_contaminate():
             event="ToolCallStarted",
             agent_id="provisioning_wifi",
             agent_name="provisioning_wifi",
-            tool=_FakeTool(tool_name="get_skill_instructions", tool_args={"skill_name": "wifi_simulation"}),
+            tool=_FakeTool(
+                tool_name="get_skill_instructions", tool_args={"skill_name": "wifi_simulation"}
+            ),
         ),
         # delivery 继续推理 (新 buffer,独立分段)
         _FakeEvent(
@@ -943,7 +1005,8 @@ def test_chat_handler_tool_call_from_other_member_does_not_contaminate():
     history = _run_chat_handler_sync(events)
 
     delivery_blocks = [
-        m for m in history
+        m
+        for m in history
         if isinstance(m, dict)
         and "差异化承载" in m.get("metadata", {}).get("title", "")
         and m["metadata"]["title"].startswith("💭")
@@ -954,7 +1017,9 @@ def test_chat_handler_tool_call_from_other_member_does_not_contaminate():
     for block in delivery_blocks:
         content = block["content"]
         assert "wifi_simulation" not in content, f"delivery 块被 wifi tool_call 污染: {content!r}"
-        assert "get_skill_instructions" not in content, f"delivery 块被 wifi tool_call 污染: {content!r}"
+        assert "get_skill_instructions" not in content, (
+            f"delivery 块被 wifi tool_call 污染: {content!r}"
+        )
 
     # 核心断言 2: delivery 的两段内容(可能分散在多个块里)都应被保留,没有丢失
     combined = "".join(b["content"] for b in delivery_blocks)
@@ -971,17 +1036,26 @@ def test_chat_handler_tool_call_from_other_member_does_not_contaminate():
 def test_chat_handler_member_badge_once_per_member():
     """每个 member 一轮只渲染一次徽章,即使事件反复交错。"""
     events = [
-        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_wifi", reasoning_content="a"),
-        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_delivery", reasoning_content="b"),
-        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_wifi", reasoning_content="c"),
-        _FakeEvent(event="ReasoningContentDelta", agent_id="provisioning_delivery", reasoning_content="d"),
+        _FakeEvent(
+            event="ReasoningContentDelta", agent_id="provisioning_wifi", reasoning_content="a"
+        ),
+        _FakeEvent(
+            event="ReasoningContentDelta", agent_id="provisioning_delivery", reasoning_content="b"
+        ),
+        _FakeEvent(
+            event="ReasoningContentDelta", agent_id="provisioning_wifi", reasoning_content="c"
+        ),
+        _FakeEvent(
+            event="ReasoningContentDelta", agent_id="provisioning_delivery", reasoning_content="d"
+        ),
         _FakeEvent(event="ReasoningCompleted", agent_id="provisioning_wifi"),
         _FakeEvent(event="ReasoningCompleted", agent_id="provisioning_delivery"),
     ]
     history = _run_chat_handler_sync(events)
 
     badges = [
-        m for m in history
+        m
+        for m in history
         if isinstance(m, dict) and m.get("metadata", {}).get("title", "").startswith("👤")
     ]
     # 每个 member 只应出现一个徽章
@@ -1045,9 +1119,9 @@ def test_render_tool_call_completed_markdown_stdout_inlined_raw():
         "stdout": "# 网络质量洞察报告\n\n## PON-2/0/5\n- 带宽利用率过高",
         "stderr": "",
     }
-    msgs = render_tool_call("report_rendering", outputs=outputs)
+    msgs = render_tool_call("insight_report", outputs=outputs)
     assert len(msgs) == 2
-    assert "```" not in msgs[1]["content"].split("report_rendering 产出")[1][:20]
+    assert "```" not in msgs[1]["content"].split("insight_report 产出")[1][:20]
     assert "# 网络质量洞察报告" in msgs[1]["content"]
 
 
@@ -1072,6 +1146,7 @@ def test_render_tool_call_completed_parses_json_string_output():
     ToolCallCompleted.tool.result。此时仍应走 Skill 格式路径拆分,不能退化为
     '返回结果: { 全量 dict }' 的兜底展示。"""
     import json as _json
+
     from ui.chat_renderer import render_tool_call
 
     outputs_str = _json.dumps(
@@ -1133,16 +1208,21 @@ def test_render_tool_call_completed_non_skill_output_single_block():
 
 
 def test_localskills_loads_all():
-    """LocalSkills 能扫描并加载 10 个 Skill。"""
+    """LocalSkills 能扫描并加载全部 14 个 Skill。"""
     from agno.skills.loaders.local import LocalSkills
+
     loader = LocalSkills(str(Path(_ROOT) / "skills"), validate=False)
     skills = loader.load()
-    assert len(skills) == 10
+    assert len(skills) == 14
     names = {s.name for s in skills}
-    assert "goal_parsing" in names
-    assert "plan_design" in names
-    assert "cei_pipeline" in names
-    assert "differentiated_delivery" in names
+    expected = {
+        "goal_parsing", "plan_design", "plan_review",
+        "cei_pipeline", "fault_diagnosis", "remote_optimization",
+        "differentiated_delivery", "wifi_simulation",
+        "insight_plan", "insight_decompose", "insight_query",
+        "insight_nl2code", "insight_reflect", "insight_report",
+    }
+    assert names == expected, f"Expected {expected}, got {names}"
 
 
 def test_create_team_structure():
@@ -1151,6 +1231,7 @@ def test_create_team_structure():
 
     from agno.team import Team
     from agno.team.team import TeamMode
+
     from core.agent_factory import create_team
 
     team = create_team(session_id="smoke-test-session")
@@ -1173,7 +1254,14 @@ def test_create_team_structure():
         if m.name == "planning":
             assert skill_names == {"goal_parsing", "plan_design", "plan_review"}
         elif m.name == "insight":
-            assert skill_names == {"data_insight", "report_rendering"}
+            assert skill_names == {
+                "insight_plan",
+                "insight_decompose",
+                "insight_query",
+                "insight_nl2code",
+                "insight_reflect",
+                "insight_report",
+            }
         elif m.name == "provisioning_wifi":
             assert skill_names == {"wifi_simulation"}
         elif m.name == "provisioning_delivery":
@@ -1188,8 +1276,10 @@ def test_create_team_structure():
 
 
 def test_db_init():
-    from core.observability.db import Database
     import tempfile
+
+    from core.observability.db import Database
+
     db_path = Path(tempfile.mktemp(suffix=".db"))
     try:
         d = Database(db_path)

@@ -136,7 +136,7 @@ Orchestrator 只做关键词匹配，**不提取参数**，把用户原话作为
 
 ## 8. 跨 SubAgent 上下文拼装规则
 
-- **Insight → Planning**：把 `insight` 返回的 `summary` 块（`priority_pons / distinct_issues / scope_indicator / peak_time_window / has_complaints`）以"画像 hints"形式注入 Planning 的初始输入
+- **Insight → Planning**：`insight` 完成后，其 assistant 回复末尾包含一个独立 JSON 代码块（summary 契约）。从该代码块中提取关键字段（`priority_pons` / `distinct_issues` / `scope_indicator` / `peak_time_window` / `has_complaints`），以"画像 hints"形式注入 `planning` 的初始输入。如果提取不到 summary 代码块，用 `insight` 回复中的 step_result 摘要手动拼装 hints
 - **Planning → Provisioning**：只传对应段落，**不**传完整方案
 - **Provisioning → Orchestrator**：各实例独立返回结构化结果，Orchestrator 组装为最终回答
 
@@ -162,7 +162,7 @@ Provisioning 实例全部返回后，Orchestrator 用 Markdown 组装：
 <基于执行结果的建议>
 ```
 
-**指针 vs 载荷的汇总纪律**（与 provisioning.md §3 Step 4、insight.md §5 对齐）：
+**指针 vs 载荷的汇总纪律**（与 provisioning.md §3 Step 4、insight.md §8 输出契约对齐）：
 - ❌ 禁止复写 Skill stdout 的**载荷主体**（完整 YAML/JSON 配置、完整 Markdown 章节、完整 ECharts option、下发日志明细、数据表行）— 载荷已由 UI 事件层直接渲染为独立消息块对用户可见
 - ✅ 允许并鼓励引用**指针级信息**（PON 口 ID、评分 / 阈值、图片 / 文件路径、配置 ID、状态码、数量统计），用户靠这些感知流程
 - ✅ Provisioning 返回的**结构化交接契约**（如中间态 mock 评分摘要、评分 gating JSON）原样保留

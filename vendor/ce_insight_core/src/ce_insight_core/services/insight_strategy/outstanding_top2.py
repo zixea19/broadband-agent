@@ -6,13 +6,14 @@ Top2 突出分析：
 """
 
 from collections import Counter
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class OutstandingTop2Strategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -69,14 +70,20 @@ class OutstandingTop2Strategy(InsightStrategy):
             "gap": round(gap, 2),
             "top2_share": round(top2_share, 4),
             "summary": f"前两名 ({top2_names}) 均值 {top2_mean:.2f}，"
-                       f"领先其余 {gap:.2f}，占总量 {top2_share:.1%}",
+            f"领先其余 {gap:.2f}，占总量 {top2_share:.1%}",
         }
         self._significance_score = float(np.clip(top2_share, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, BLUE, HIGHLIGHT_RED,
+            BLUE,
+            HIGHLIGHT_RED,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         top_n = 10
         display_df = result_df.head(top_n)
         display_labels = truncate_labels(display_df[group_column].astype(str).tolist())
@@ -86,15 +93,22 @@ class OutstandingTop2Strategy(InsightStrategy):
             "title": base_title(f"{col} Top2 突出分析"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
-            "xAxis": {"type": "category", "data": display_labels,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {
+                "type": "category",
+                "data": display_labels,
+                "axisLabel": rotated_axis_label(30),
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
-            "series": [{
-                "type": "bar",
-                "data": [{"value": round(v, 2), "itemStyle": {"color": c}}
-                         for v, c in zip(display_df[col].tolist(), colors)],
-                "barMaxWidth": 40,
-            }],
+            "series": [
+                {
+                    "type": "bar",
+                    "data": [
+                        {"value": round(v, 2), "itemStyle": {"color": c}}
+                        for v, c in zip(display_df[col].tolist(), colors)
+                    ],
+                    "barMaxWidth": 40,
+                }
+            ],
         }
 
     # ------------------------------------------------------------------
@@ -102,8 +116,13 @@ class OutstandingTop2Strategy(InsightStrategy):
     # ------------------------------------------------------------------
     def _execute_measure_compare(self, value_columns: list[str], group_column: str) -> None:
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, PALETTE, HIGHLIGHT_RED,
+            HIGHLIGHT_RED,
+            PALETTE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
 
         if group_column and group_column in self._df.columns:
@@ -149,21 +168,24 @@ class OutstandingTop2Strategy(InsightStrategy):
         self._significance_score = float(np.clip(top2_share, 0, 1))
 
         groups = truncate_labels(agg_df.index.astype(str).tolist())
-        colors = PALETTE[:len(value_columns)]
+        colors = PALETTE[: len(value_columns)]
 
         series = []
         for i, col in enumerate(value_columns):
             if col not in agg_df.columns:
                 continue
             color = HIGHLIGHT_RED if col in top2_names else colors[i % len(colors)]
-            series.append({
-                "name": col,
-                "type": "bar",
-                "data": [round(float(v), 2) if not pd.isna(v) else 0
-                         for v in agg_df[col].tolist()],
-                "itemStyle": {"color": color},
-                "barMaxWidth": 30,
-            })
+            series.append(
+                {
+                    "name": col,
+                    "type": "bar",
+                    "data": [
+                        round(float(v), 2) if not pd.isna(v) else 0 for v in agg_df[col].tolist()
+                    ],
+                    "itemStyle": {"color": color},
+                    "barMaxWidth": 30,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "bar",
@@ -171,8 +193,7 @@ class OutstandingTop2Strategy(InsightStrategy):
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
             "legend": {"show": True, "top": 30, "textStyle": {"fontSize": 10}},
-            "xAxis": {"type": "category", "data": groups,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {"type": "category", "data": groups, "axisLabel": rotated_axis_label(30)},
             "yAxis": {"type": "value", "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }
@@ -182,8 +203,13 @@ class OutstandingTop2Strategy(InsightStrategy):
     # ------------------------------------------------------------------
     def _execute_matrix(self, value_columns: list[str], group_column: str) -> None:
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, PALETTE, HIGHLIGHT_RED,
+            HIGHLIGHT_RED,
+            PALETTE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
 
         agg_df = self._df.groupby(group_column)[value_columns].mean().dropna(how="all")
@@ -259,11 +285,7 @@ class OutstandingTop2Strategy(InsightStrategy):
         ]
         for g, info in list(per_group_top2.items())[:8]:
             t1 = f"{info['top1_measure']}={info['top1_value']}"
-            t2 = (
-                f", {info['top2_measure']}={info['top2_value']}"
-                if info["top2_measure"]
-                else ""
-            )
+            t2 = f", {info['top2_measure']}={info['top2_value']}" if info["top2_measure"] else ""
             summary_lines.append(f"- {g}: {t1}{t2}")
         if most_common_count >= 2:
             summary_lines.append(
@@ -299,27 +321,28 @@ class OutstandingTop2Strategy(InsightStrategy):
                     cell_color = "#f2918c"  # 珊瑚粉（次高亮）
                 else:
                     cell_color = base_color
-                data_points.append({
-                    "value": val,
-                    "itemStyle": {"color": cell_color},
-                })
-            series.append({
-                "name": col,
-                "type": "bar",
-                "data": data_points,
-                "barMaxWidth": 30,
-            })
+                data_points.append(
+                    {
+                        "value": val,
+                        "itemStyle": {"color": cell_color},
+                    }
+                )
+            series.append(
+                {
+                    "name": col,
+                    "type": "bar",
+                    "data": data_points,
+                    "barMaxWidth": 30,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "bar",
-            "title": base_title(
-                f"各 {group_column} 的 Top2 维度（各自前两名高亮）"
-            ),
+            "title": base_title(f"各 {group_column} 的 Top2 维度（各自前两名高亮）"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
             "legend": {"show": True, "top": 30, "textStyle": {"fontSize": 10}},
-            "xAxis": {"type": "category", "data": groups,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {"type": "category", "data": groups, "axisLabel": rotated_axis_label(30)},
             "yAxis": {"type": "value", "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }

@@ -35,7 +35,7 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -289,9 +289,9 @@ class Line:
             return Intersection(IntersectionType.empty)
 
     def point_is_inside_line(self, point: Vector2) -> bool:
-        return min(self.p0.x, self.p1.x) <= point.x <= max(
-            self.p0.x, self.p1.x
-        ) and min(self.p0.y, self.p1.y) <= point.y <= max(self.p0.y, self.p1.y)
+        return min(self.p0.x, self.p1.x) <= point.x <= max(self.p0.x, self.p1.x) and min(
+            self.p0.y, self.p1.y
+        ) <= point.y <= max(self.p0.y, self.p1.y)
 
     def copy(self) -> "Line":
         return Line(self.p0.copy(), self.p1.copy())
@@ -362,13 +362,11 @@ class ModelManager:
         self.dmodel = None
 
     def load_models(self):
-        from ultralytics import YOLO
         from rfdetr import RFDETRBase
+        from ultralytics import YOLO
 
         self.smodel = YOLO(self.config.smodel_path, task="segment")
-        self.dmodel = RFDETRBase(
-            pretrain_weights=self.config.dmodel_path, num_classes=3
-        )
+        self.dmodel = RFDETRBase(pretrain_weights=self.config.dmodel_path, num_classes=3)
         return self
 
     def infer(self, image):
@@ -397,9 +395,7 @@ def transfer_rf_detr(detections) -> list[PlanData]:
         boxes = np.ceil(det.xyxy).astype(int)
         classes = det.class_id.astype(int)
         for idx, box in enumerate(boxes):
-            plan_datas.append(
-                PlanData(classes=int(classes[idx]), bbox=box.reshape(2, 2))
-            )
+            plan_datas.append(PlanData(classes=int(classes[idx]), bbox=box.reshape(2, 2)))
     return plan_datas
 
 
@@ -409,9 +405,7 @@ def transfer(results) -> list[PlanData]:
         boxes = r.boxes.xyxy.cpu().numpy().astype(int)
         classes = r.boxes.cls.cpu().numpy().astype(int)
         for idx, box in enumerate(boxes):
-            plan_datas.append(
-                PlanData(classes=int(classes[idx]), bbox=box.reshape(2, 2))
-            )
+            plan_datas.append(PlanData(classes=int(classes[idx]), bbox=box.reshape(2, 2)))
     return plan_datas
 
 
@@ -442,8 +436,7 @@ def merge_lines(lines: list[Line], dt: int = 5) -> list[Line]:
         direction_matched = [
             o
             for o in lines_sorted
-            if o != origin
-            and origin.normalize in (o.normalize, Line(o.p1, o.p0).normalize)
+            if o != origin and origin.normalize in (o.normalize, Line(o.p1, o.p0).normalize)
         ]
         distance_matched = [
             o
@@ -479,13 +472,10 @@ def extend_lines(lines: list[Line], threshold: int = 50) -> list[Line]:
                 continue
             for line in [left, right]:
                 intersect = Line.intersect(line, other)
-                if (
-                    intersect.type == IntersectionType.point
-                    and not Line.point_is_inside_line(origin, intersect.point)
+                if intersect.type == IntersectionType.point and not Line.point_is_inside_line(
+                    origin, intersect.point
                 ):
-                    points = sorted(
-                        [intersect.point, origin.p0, origin.p1], key=lambda x: x.length
-                    )
+                    points = sorted([intersect.point, origin.p0, origin.p1], key=lambda x: x.length)
                     origin.p0, origin.p1 = points[0].round(), points[2].round()
                     return extend_lines(lines_new, threshold)
     return lines_new
@@ -499,8 +489,7 @@ def split_lines(lines: list[Line]) -> list[Line]:
             intersect.point
             for other in lines_new
             if other != origin
-            and (intersect := Line.intersect(origin, other)).type
-            == IntersectionType.point
+            and (intersect := Line.intersect(origin, other)).type == IntersectionType.point
             and Line.point_is_inside_line(origin, intersect.point)
         ]
         points.extend([origin.p0, origin.p1])
@@ -543,15 +532,11 @@ class ImageProcessor:
         self.model_manager = model_manager
 
     def process_single_image(self, image_path: Path) -> list[Line]:
-        image = cv2.imdecode(
-            np.fromfile(str(image_path), dtype=np.uint8), cv2.IMREAD_COLOR
-        )
+        image = cv2.imdecode(np.fromfile(str(image_path), dtype=np.uint8), cv2.IMREAD_COLOR)
         image = preprocess_image(image)
         sresults, dresults, _ = self.model_manager.infer(image)
 
-        dwalls = [
-            get_line_bbox(pd) for pd in transfer_rf_detr(dresults) if get_line_bbox(pd)
-        ]
+        dwalls = [get_line_bbox(pd) for pd in transfer_rf_detr(dresults) if get_line_bbox(pd)]
         swalls = [get_line_bbox(pd) for pd in transfer(sresults) if get_line_bbox(pd)]
 
         walls = [w for w in dwalls + swalls if w]
@@ -568,9 +553,7 @@ class ImageProcessor:
         return walls
 
 
-def walls_json_to_grid(
-    walls_json: dict, shape: tuple, grid_size: int = 400
-) -> np.ndarray:
+def walls_json_to_grid(walls_json: dict, shape: tuple, grid_size: int = 400) -> np.ndarray:
     h, w = shape[:2]
     grid = np.zeros((grid_size, grid_size), dtype=np.uint8)
     for wall in walls_json.get("walls", []):
@@ -634,17 +617,13 @@ def create_mock_grid_with_materials(
 
     # 第二步：检测门区域 - 门通常是墙体上的较暗缺口
     door_kernel = np.ones((3, 3), np.uint8)
-    wall_border = cv2.dilate(
-        (material_grid == 1).astype(np.uint8), door_kernel, iterations=1
-    )
+    wall_border = cv2.dilate((material_grid == 1).astype(np.uint8), door_kernel, iterations=1)
 
     # 门：在墙体边缘的暗色小区域
     _, dark_mask = cv2.threshold(resized_gray, 100, 255, cv2.THRESH_BINARY_INV)
     potential_doors = dark_mask & wall_border
     door_mask = potential_doors.astype(np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        door_mask, connectivity=8
-    )
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(door_mask, connectivity=8)
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
         # 门的大小范围：15-300平方像素
@@ -655,14 +634,10 @@ def create_mock_grid_with_materials(
     # 窗：在墙体上且较亮的小区域
     _, bright_mask = cv2.threshold(resized_gray, 180, 255, cv2.THRESH_BINARY)
     # 窗应该在墙体内（不是墙体外扩区域）
-    wall_core = cv2.erode(
-        (material_grid == 1).astype(np.uint8), door_kernel, iterations=1
-    )
+    wall_core = cv2.erode((material_grid == 1).astype(np.uint8), door_kernel, iterations=1)
     potential_windows = bright_mask & wall_core
     window_mask = potential_windows.astype(np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        window_mask, connectivity=8
-    )
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(window_mask, connectivity=8)
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
         # 窗的大小范围：10-200平方像素（比门小
@@ -721,10 +696,7 @@ def create_mock_grid_with_materials(
         )
         # 只保留门和窗（非外墙区域的）
         material_grid[
-            (eroded == 0)
-            & (material_grid != 2)
-            & (material_grid != 3)
-            & ~outer_concrete_mask
+            (eroded == 0) & (material_grid != 2) & (material_grid != 3) & ~outer_concrete_mask
         ] = 0
         material_grid[(material_grid == 1) & (eroded == 0) & ~outer_concrete_mask] = 0
 
@@ -735,28 +707,20 @@ def create_mock_grid_with_materials(
 
     # 第六步：再次检测门窗（因为墙体可能变了）
     _, dark_mask = cv2.threshold(resized_gray, 100, 255, cv2.THRESH_BINARY_INV)
-    wall_border = cv2.dilate(
-        (material_grid == 1).astype(np.uint8), door_kernel, iterations=1
-    )
+    wall_border = cv2.dilate((material_grid == 1).astype(np.uint8), door_kernel, iterations=1)
     potential_doors = dark_mask & wall_border
     door_mask = potential_doors.astype(np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        door_mask, connectivity=8
-    )
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(door_mask, connectivity=8)
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
         if 15 < area < 300:
             material_grid[labels == i] = 2
 
     _, bright_mask = cv2.threshold(resized_gray, 180, 255, cv2.THRESH_BINARY)
-    wall_core = cv2.erode(
-        (material_grid == 1).astype(np.uint8), door_kernel, iterations=1
-    )
+    wall_core = cv2.erode((material_grid == 1).astype(np.uint8), door_kernel, iterations=1)
     potential_windows = bright_mask & wall_core
     window_mask = potential_windows.astype(np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-        window_mask, connectivity=8
-    )
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(window_mask, connectivity=8)
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
         if 10 < area < 200:
@@ -841,9 +805,7 @@ def visualize_grid(grid: np.ndarray, scale: float, output_path: Path) -> None:
             outline=(100, 100, 100),
         )
         # 绘制材质名称
-        draw.text(
-            (x_pos + box_size + 5, y_pos), name, fill=(50, 50, 50), font=font_small
-        )
+        draw.text((x_pos + box_size + 5, y_pos), name, fill=(50, 50, 50), font=font_small)
         x_pos += spacing
         # 换行
         if x_pos > w - 80:
@@ -910,7 +872,7 @@ def process_floorplan(
         sys.exit(1)
 
     h, w = image.shape[:2]
-    print(f"[1/4] 加载户型图...")
+    print("[1/4] 加载户型图...")
     print(f"  原始尺寸: {w}x{h}")
 
     walls_json = None
@@ -937,12 +899,12 @@ def process_floorplan(
                     with open(json_path) as f:
                         walls_json = json.load(f)
                     source = "deep_learning"
-                    print(f"  ✓ 深度学习模型处理完成")
+                    print("  ✓ 深度学习模型处理完成")
             except Exception as e:
                 print(f"  警告: 深度学习处理失败: {e}")
                 print("  将使用轮廓检测备用方案...")
         else:
-            print(f"  警告: 模型文件不存在，使用轮廓检测备用方案...")
+            print("  警告: 模型文件不存在，使用轮廓检测备用方案...")
     else:
         print("[2/4] 使用轮廓检测处理...")
 
@@ -973,12 +935,10 @@ def process_floorplan(
     )
 
     unique, counts = np.unique(grid_map.grid, return_counts=True)
-    print(f"  材质分布:")
+    print("  材质分布:")
     for val, count in zip(unique, counts):
         percentage = count / grid_map.grid.size * 100
-        print(
-            f"    - {MATERIAL_NAMES.get(int(val), '未知')}: {count} ({percentage:.1f}%)"
-        )
+        print(f"    - {MATERIAL_NAMES.get(int(val), '未知')}: {count} ({percentage:.1f}%)")
 
     print()
     print("[4/4] 保存输出文件...")
@@ -1021,9 +981,7 @@ app = typer.Typer()
 @app.command()
 def process(
     input_image: Annotated[Path, typer.Argument()],
-    output_dir: Annotated[Path, typer.Option("-o", "--output-dir")] = Path(
-        "output/floorplan"
-    ),
+    output_dir: Annotated[Path, typer.Option("-o", "--output-dir")] = Path("output/floorplan"),
     grid_size: Annotated[int, typer.Option("-g", "--grid-size")] = DEFAULT_GRID_SIZE,
     no_dl: Annotated[bool, typer.Option("--no-dl")] = False,
 ):

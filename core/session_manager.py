@@ -4,12 +4,11 @@
 Team 由 1 leader (Orchestrator) + 5 member SubAgent 组成。
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
-
-from loguru import logger
+from dataclasses import dataclass
+from typing import Dict, Optional
 
 from agno.team import Team
+from loguru import logger
 
 from core.agent_factory import create_team
 from core.model_loader import inject_prompt_tracer
@@ -40,8 +39,13 @@ class SessionManager:
         if session_hash in self._sessions:
             return self._sessions[session_hash]
 
-        # 创建 DB 记录
+        # 创建 DB 记录（失败时重试一次）
         db_sid = db.create_session(session_hash)
+        if db_sid is None:
+            logger.warning(f"create_session 首次失败，重试: {session_hash[:8]}...")
+            db_sid = db.create_session(session_hash)
+        if db_sid is None:
+            logger.error(f"create_session 最终失败: {session_hash[:8]}... — DB traces 将被跳过")
 
         # 创建 Team (leader + 5 members)
         team = create_team(session_id=session_hash)

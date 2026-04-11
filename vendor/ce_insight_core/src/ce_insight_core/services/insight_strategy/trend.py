@@ -2,13 +2,12 @@
 趋势分析：对时序数据做线性回归，判断上升/下降趋势及显著性。
 """
 
-import pandas as pd
 import numpy as np
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class TrendStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -51,14 +50,20 @@ class TrendStrategy(InsightStrategy):
         self._significance_score = float(np.clip(r_squared, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, BLUE, HIGHLIGHT_RED, ORANGE,
+            BLUE,
+            HIGHLIGHT_RED,
+            ORANGE,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         time_labels = truncate_labels(df[group_column].astype(str).tolist(), 12)
 
         # 检测突变点（相邻差值超过2倍标准差）
         diffs = np.abs(np.diff(y))
-        diff_threshold = np.mean(diffs) + 2 * np.std(diffs) if len(diffs) > 1 else float('inf')
+        diff_threshold = np.mean(diffs) + 2 * np.std(diffs) if len(diffs) > 1 else float("inf")
         mutation_points = [{"xAxis": int(i + 1)} for i, d in enumerate(diffs) if d > diff_threshold]
 
         self._chart_configs = {
@@ -67,20 +72,33 @@ class TrendStrategy(InsightStrategy):
             "tooltip": base_tooltip("axis"),
             "legend": {"bottom": 0, "textStyle": {"fontSize": 11}},
             "grid": {"left": "10%", "right": "6%", "bottom": "18%", "top": "16%"},
-            "xAxis": {"type": "category", "data": time_labels,
-                      "axisLabel": rotated_axis_label(30) if len(time_labels) > 8 else {"fontSize": 11}},
+            "xAxis": {
+                "type": "category",
+                "data": time_labels,
+                "axisLabel": rotated_axis_label(30) if len(time_labels) > 8 else {"fontSize": 11},
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
             "series": [
                 {
-                    "name": "实际值", "type": "line", "smooth": True,
+                    "name": "实际值",
+                    "type": "line",
+                    "smooth": True,
                     "data": [round(float(v), 2) for v in y],
-                    "itemStyle": {"color": BLUE}, "lineStyle": {"color": BLUE},
+                    "itemStyle": {"color": BLUE},
+                    "lineStyle": {"color": BLUE},
                     "symbolSize": 6,
-                    "markPoint": {"data": mutation_points[:3], "symbol": "pin",
-                                  "symbolSize": 30, "itemStyle": {"color": ORANGE}} if mutation_points else {},
+                    "markPoint": {
+                        "data": mutation_points[:3],
+                        "symbol": "pin",
+                        "symbolSize": 30,
+                        "itemStyle": {"color": ORANGE},
+                    }
+                    if mutation_points
+                    else {},
                 },
                 {
-                    "name": "趋势线", "type": "line",
+                    "name": "趋势线",
+                    "type": "line",
                     "data": y_pred.round(2).tolist(),
                     "lineStyle": {"type": "dashed", "color": HIGHLIGHT_RED},
                     "itemStyle": {"color": HIGHLIGHT_RED},

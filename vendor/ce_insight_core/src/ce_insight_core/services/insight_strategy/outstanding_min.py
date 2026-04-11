@@ -6,13 +6,14 @@
 """
 
 from collections import Counter
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class OutstandingMinStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -65,14 +66,20 @@ class OutstandingMinStrategy(InsightStrategy):
             "gap": round(gap, 2),
             "z_score": round(float(z_score), 4),
             "summary": f"{col} 最小值出现在 {min_group}（{min_val:.2f}），"
-                       f"低于第二名 {gap:.2f}，z-score={z_score:.2f}",
+            f"低于第二名 {gap:.2f}，z-score={z_score:.2f}",
         }
         self._significance_score = float(np.clip(abs(z_score) / 3, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, BLUE, HIGHLIGHT_RED,
+            BLUE,
+            HIGHLIGHT_RED,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         top_n = 10
         display_df = result_df.head(top_n)
         display_labels = truncate_labels(display_df[group_column].astype(str).tolist())
@@ -83,14 +90,22 @@ class OutstandingMinStrategy(InsightStrategy):
             "title": base_title(f"{col} 最小值分析 (Top{min(top_n, len(result_df))})"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
-            "xAxis": {"type": "category", "data": display_labels,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {
+                "type": "category",
+                "data": display_labels,
+                "axisLabel": rotated_axis_label(30),
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
-            "series": [{
-                "type": "bar",
-                "data": [{"value": v, "itemStyle": {"color": c}} for v, c in zip(display_vals, colors)],
-                "barMaxWidth": 40,
-            }],
+            "series": [
+                {
+                    "type": "bar",
+                    "data": [
+                        {"value": v, "itemStyle": {"color": c}}
+                        for v, c in zip(display_vals, colors)
+                    ],
+                    "barMaxWidth": 40,
+                }
+            ],
         }
 
     # ------------------------------------------------------------------
@@ -98,8 +113,13 @@ class OutstandingMinStrategy(InsightStrategy):
     # ------------------------------------------------------------------
     def _execute_measure_compare(self, value_columns: list[str], group_column: str) -> None:
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, PALETTE, HIGHLIGHT_RED,
+            HIGHLIGHT_RED,
+            PALETTE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
 
         # 按 group 聚合（无 group 时退化为全表聚合）
@@ -141,21 +161,24 @@ class OutstandingMinStrategy(InsightStrategy):
 
         # 图表：分组柱状图（x=group，每个 measure 一个系列）
         groups = truncate_labels(agg_df.index.astype(str).tolist())
-        colors = PALETTE[:len(value_columns)]
+        colors = PALETTE[: len(value_columns)]
 
         series = []
         for i, col in enumerate(value_columns):
             if col not in agg_df.columns:
                 continue
             color = HIGHLIGHT_RED if col == min_measure else colors[i % len(colors)]
-            series.append({
-                "name": col,
-                "type": "bar",
-                "data": [round(float(v), 2) if not pd.isna(v) else 0
-                         for v in agg_df[col].tolist()],
-                "itemStyle": {"color": color},
-                "barMaxWidth": 30,
-            })
+            series.append(
+                {
+                    "name": col,
+                    "type": "bar",
+                    "data": [
+                        round(float(v), 2) if not pd.isna(v) else 0 for v in agg_df[col].tolist()
+                    ],
+                    "itemStyle": {"color": color},
+                    "barMaxWidth": 30,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "bar",
@@ -163,8 +186,7 @@ class OutstandingMinStrategy(InsightStrategy):
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
             "legend": {"show": True, "top": 30, "textStyle": {"fontSize": 10}},
-            "xAxis": {"type": "category", "data": groups,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {"type": "category", "data": groups, "axisLabel": rotated_axis_label(30)},
             "yAxis": {"type": "value", "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }
@@ -174,8 +196,13 @@ class OutstandingMinStrategy(InsightStrategy):
     # ------------------------------------------------------------------
     def _execute_matrix(self, value_columns: list[str], group_column: str) -> None:
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, PALETTE, HIGHLIGHT_RED,
+            HIGHLIGHT_RED,
+            PALETTE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
 
         agg_df = self._df.groupby(group_column)[value_columns].mean().dropna(how="all")
@@ -241,9 +268,7 @@ class OutstandingMinStrategy(InsightStrategy):
         # 显著性：集中度越高（共同短板越明显），显著性越高
         self._significance_score = float(np.clip(concentration, 0.3, 1.0))
 
-        summary_lines = [
-            f"对 {n_groups} 个 {group_column} 做多指标对比，每个分组的最差维度如下："
-        ]
+        summary_lines = [f"对 {n_groups} 个 {group_column} 做多指标对比，每个分组的最差维度如下："]
         for g, info in list(per_group_worst.items())[:8]:  # 最多展示 8 个
             summary_lines.append(f"- {g}: {info['measure']} = {info['value']}")
         if most_common_count >= 2:
@@ -279,27 +304,28 @@ class OutstandingMinStrategy(InsightStrategy):
                 val = round(float(v), 4) if pd.notna(v) else 0
                 # 如果这个 cell 是该 group 的 worst，标红
                 is_worst = per_group_worst.get(group_key, {}).get("measure") == col
-                data_points.append({
-                    "value": val,
-                    "itemStyle": {"color": HIGHLIGHT_RED if is_worst else base_color},
-                })
-            series.append({
-                "name": col,
-                "type": "bar",
-                "data": data_points,
-                "barMaxWidth": 30,
-            })
+                data_points.append(
+                    {
+                        "value": val,
+                        "itemStyle": {"color": HIGHLIGHT_RED if is_worst else base_color},
+                    }
+                )
+            series.append(
+                {
+                    "name": col,
+                    "type": "bar",
+                    "data": data_points,
+                    "barMaxWidth": 30,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "bar",
-            "title": base_title(
-                f"各 {group_column} 的维度对比（各自最低标红）"
-            ),
+            "title": base_title(f"各 {group_column} 的维度对比（各自最低标红）"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
             "legend": {"show": True, "top": 30, "textStyle": {"fontSize": 10}},
-            "xAxis": {"type": "category", "data": groups,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {"type": "category", "data": groups, "axisLabel": rotated_axis_label(30)},
             "yAxis": {"type": "value", "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }

@@ -70,7 +70,7 @@ payload：
 }
 ```
 
-**`chart_configs` 是完整的 ECharts option，前端直接 `echarts.setOption(chart_configs)` 渲染。**
+**`chart_configs` 包含完整的 ECharts option JSON，Agent 必须原样保留，禁止改写。**
 
 每个 Step 执行完后，在 assistant 消息中输出精简摘要：
 ```json
@@ -91,5 +91,5 @@ get_skill_script("insight_query", "run_query.py", execute=True, args=["<payload_
 - `references/triple_schema.md` — 三元组格式契约
 
 ## 禁止事项
-- ❌ 不得改写 `chart_configs`（前端直接渲染）
+- ❌ 不得改写 `chart_configs`（必须原样透传）
 - ❌ 不得改写 `filter_data` / `found_entities`（必须原样透传）

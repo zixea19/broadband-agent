@@ -2,13 +2,12 @@
 均匀度分析：评估指标在各分组中分布的均匀程度（基于基尼系数）。
 """
 
-import pandas as pd
 import numpy as np
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class EvennessStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -47,14 +46,20 @@ class EvennessStrategy(InsightStrategy):
             "cv": round(cv, 4),
             "level": level,
             "summary": f"{col} 在各 {group_column} 间{level}，"
-                       f"基尼系数 {gini:.4f}，变异系数 {cv:.4f}",
+            f"基尼系数 {gini:.4f}，变异系数 {cv:.4f}",
         }
         self._significance_score = float(np.clip(gini, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, BLUE, ORANGE,
+            BLUE,
+            ORANGE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         display_labels = truncate_labels(result_df[group_column].astype(str).tolist())
         mean_val = round(float(np.mean(values)), 2)
         self._chart_configs = {
@@ -62,20 +67,29 @@ class EvennessStrategy(InsightStrategy):
             "title": base_title(f"{col} 均匀度分析（基尼={gini:.3f}）"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
-            "xAxis": {"type": "category", "data": display_labels,
-                      "axisLabel": rotated_axis_label(30) if len(display_labels) > 8 else {"fontSize": 11}},
+            "xAxis": {
+                "type": "category",
+                "data": display_labels,
+                "axisLabel": rotated_axis_label(30)
+                if len(display_labels) > 8
+                else {"fontSize": 11},
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
-            "series": [{
-                "type": "bar", "name": col,
-                "data": result_df[col].round(2).tolist(),
-                "itemStyle": {"color": BLUE}, "barMaxWidth": 40,
-                "markLine": {
-                    "data": [{"yAxis": mean_val, "name": "均值"}],
-                    "lineStyle": {"color": ORANGE, "type": "dashed", "width": 2},
-                    "label": {"formatter": f"均值: {mean_val}", "fontSize": 10},
-                    "symbol": "none",
-                },
-            }],
+            "series": [
+                {
+                    "type": "bar",
+                    "name": col,
+                    "data": result_df[col].round(2).tolist(),
+                    "itemStyle": {"color": BLUE},
+                    "barMaxWidth": 40,
+                    "markLine": {
+                        "data": [{"yAxis": mean_val, "name": "均值"}],
+                        "lineStyle": {"color": ORANGE, "type": "dashed", "width": 2},
+                        "label": {"formatter": f"均值: {mean_val}", "fontSize": 10},
+                        "symbol": "none",
+                    },
+                }
+            ],
         }
 
     @staticmethod

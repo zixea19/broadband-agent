@@ -21,15 +21,62 @@
 
 ---
 
-## 2. 五阶段工作流
+## 2. 工作流全景（Plan → Phase 循环 → Report）
+
+流程**不是**线性 5 步，而是 **Plan (1 次) → [Decompose → Execute → Reflect] × N Phase → Report (1 次)**：
+
+```
+Plan (1 次)
+  │ 输出: <!--event:plan--> MacroPlan JSON
+  ▼
+┌─ Phase 循环（N 次，N = MacroPlan.phases 长度）────────────────┐
+│  Decompose → 输出: <!--event:decompose_result--> Step 数组摘要  │
+│  Execute   → 输出: <!--event:step_result--> × M 步              │
+│  Reflect   → 输出: <!--event:reflect--> 决策 A/B/C/D            │
+└──────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+Report (1 次)
+  │ 输出: render_report.py stdout (Markdown, 通道 1 自动展示)
+  │       + <!--event:done--> (通道 2 流程结束信号)
+  │       + summary JSON 代码块 (通道 2, 供 Orchestrator 消费)
+  ▼
+停下等待用户确认
+```
+
+### 各阶段对应的 Skill
 
 | 阶段 | 动作 | 产物 | 调用 Skill |
 |---|---|---|---|
-| 1. Plan | 把用户目标拆成 2-4 个 Phase（L1→L2→L3→L4 或按任务类型简化） | MacroPlan JSON（内部保留） | 不调用 Skill，按需读 `plan_fewshots.md` |
-| 2. Decompose | 为当前 Phase 拆 1-8 个 Step（每步指定 insight_type + 三元组） | Step 数组 | 可能先调 `list_schema.py` 查字段，再读 `decompose_fewshots.md` + `insight_catalog.md` + `triple_schema.md` |
-| 3. Execute | 逐步调 `run_query.py` / `run_insight.py` / `run_nl2code.py` | StepResult 列表 | ✅ `data_insight` |
-| 4. Reflect | Phase 结束后决定 A/B/C/D，更新剩余 Phase | 反思决策 | 不调 Skill，按需读 `reflect_rubric.md` |
-| 5. Report | 汇总所有 Phase 结果 → Markdown + summary JSON | 双输出给 Orchestrator | ✅ `report_rendering` |
+| Plan | 把用户目标拆成 2-4 个 Phase | MacroPlan JSON（**必须在 assistant 消息中输出**） | 按需读 `insight_plan` 的 `plan_fewshots.md` |
+| Decompose (每 Phase) | 为当前 Phase 拆 1-8 个 Step | Step 分解摘要 | `insight_decompose`（`list_schema.py` 查字段 + 参考文件） |
+| Execute (每 Phase) | 逐步调脚本执行 | StepResult 列表 | `insight_query`（`run_insight.py` / `run_query.py`）或 `insight_nl2code`（`run_nl2code.py`） |
+| Reflect (每 Phase) | Phase 结束后决定 A/B/C/D，更新剩余 Phase | 反思决策 | 按需读 `insight_reflect` 的 `reflect_rubric.md` |
+| Report | 汇总所有 Phase 结果 → Markdown + summary JSON | 报告 + 交接契约 | `insight_report`（`render_report.py`） |
+
+### 事件输出协议
+
+所有 `<!--event:xxx-->` 标记在 **assistant 消息中**输出。
+
+| 事件 | 触发时机 | JSON 结构（关���字段） |
+|---|---|---|
+| `plan` | Plan 阶段完成后 | `goal`, `total_phases`, `phases[]` |
+| `decompose_result` | 每 Phase Decompose 后 | `phase_id`, `total_steps`, `steps[]` |
+| `phase_start` | 每 Phase Execute 开始前 | `phase_id`, `name`, `status` |
+| `step_result` | 每 Step 脚本执行后 | `phase_id`, `step_id`, `insight_type`, `significance`, `summary`, `found_entities` |
+| `reflect` | 每 Phase 所有 Step 完成后 | `phase_id`, `choice`, `reason` |
+| `done` | Report 阶段完成后 | `total_phases`, `total_steps`, `total_charts` |
+
+另外两类输出不使用事件标记：
+- **脚本 stdout**：调用 Skill 脚本后的返回值（含 `chart_configs` 等）会被自动展示，无需在 assistant 文本中复述
+- **summary JSON**：Report 末尾的独立 JSON 代码块，供 Orchestrator 提取
+
+**执行时序**：`plan` → [`decompose_result` → `phase_start` → 调脚本 → `step_result` × M → `reflect`] × N Phase → `done`
+
+**容错规则**：
+- Step 执行失败时，`step_result` 的 `status` 字段为 `"error"`，`summary` 描述错误原因
+- Phase 被 Reflect D 跳过时，仍输出该 Phase 的 `phase_start`（status=`"skipped"`），但不输出 step_result
+- `done` 事件始终在最后输出（即使部分 Phase 失败）
 
 ---
 
@@ -81,7 +128,13 @@
    - `references/triple_schema.md` — 三元组硬约束
    - `references/decompose_fewshots.md` — Layer 3 根因 fewshot + 步骤数建议
 
-3. **拆步骤**（内部保留 Step 数组，不发用户）：
+3. **拆步骤**并 🔴 **输出 `decompose_result` 事件**（让用户感知 Decompose 阶段进度）：
+   ```
+   <!--event:decompose_result-->
+   {"phase_id": 1, "total_steps": 4, "steps": [{"step": 1, "insight_types": ["OutstandingMin"], "rationale": "找 CEI 最低值"}, {"step": 2, "insight_types": ["Attribution"], "rationale": "归因分析"}]}
+   ```
+   事件中只含 step 编号 + insight_types + rationale 摘要，**不含完整 query_config**（避免 token 膨胀）。
+   完整 Step 数组（含 query_config）内部保留，用于后续 Execute 阶段调用：
    ```json
    [
      {
@@ -150,29 +203,19 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
 
 🔴 **切记**：`dimensions` 格式错误是最常见的导致下钻失效的原因。如果你看到返回的 `data_shape` 行数跟全量数据一样多（如 3857 行），说明过滤没有生效，请检查 dimensions 格式。
 
-### 🔴 前端事件输出（强制，不可跳过）
+### 🔴 事件输出（强制，不可跳过）
 
-以下 3 种事件**必须**在 assistant 消息中输出，前端依赖这些标记做渲染。
+每步执行时**必须**按 §2「事件输出协议」输出对应的 `<!--event:xxx-->` 标记。Execute 阶段涉及 3 种事件：
 
-**1) 每个 Phase 开始前，输出 phase_start：**
-```
-<!--event:phase_start-->
-{"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "status": "running"}
-```
+1. **`phase_start`** — 每个 Phase 开始前输出（示例见 §2 事件表）
+2. **`step_result`** — 每个 Step 脚本调用完成后输出，**必须包含 `phase_id` 和 `step_id`**：
+   ```
+   <!--event:step_result-->
+   {"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}, "status": "ok"}
+   ```
+3. **`reflect`** — 每个 Phase 所有 Step 执行完后输出
 
-**2) 每个 Step 的脚本调用完成后，输出 step_result：**
-```
-<!--event:step_result-->
-{"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}}
-```
-
-**3) 每个 Phase 所有 Step 执行完后，输出 reflect：**
-```
-<!--event:reflect-->
-{"phase_id": 1, "choice": "A", "reason": "成功识别低分PON口，按原计划进入Phase 2", "next_phase": 2}
-```
-
-**执行顺序**：`phase_start` → 调脚本 → `step_result` → ... → `reflect` → 下一个 Phase 的 `phase_start` → ...
+**执行时序**：`phase_start` → 调脚本 → `step_result` → ... → `reflect` → 下一个 Phase 的 `phase_start` → ...
 
 ### 每步的调用模式
 
@@ -197,13 +240,14 @@ get_skill_script(
 ```
 payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step 的 `insight_types[0]`。
 `value_columns` / `group_column` 可省略（会从三元组推导）。
+🔴 **必须**在 payload 中携带 `"phase_id"` 和 `"step_id"`，脚本会原样透传到 stdout JSON，供前端关联 step_result 事件。
 
 **NL2Code 步骤**（当现有 12 种函数无法满足时）：
 1. **你自己**按 `references/nl2code_spec.md` 写一段 pandas 代码（不要再委托给其他 LLM）
 2. 调用：
    ```
    get_skill_script(
-       "insight_query",
+       "insight_nl2code",
        "run_nl2code.py",
        execute=True,
        args=["<payload_json_string>"]
@@ -228,7 +272,7 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 ### 处理 StepResult
 - `significance < 0.3` 的结果可以不在最终报告中高亮，但仍要保留在 step_results
 - `filter_data` / `found_entities` 必须原样保留（供后续 step 下钻 + summary JSON）
-- `chart_configs` 必须原样保留（前端直接渲染 ECharts option）
+- `chart_configs` 必须原样保留（包含完整 ECharts option JSON，由工具调用返回值自动展示）
 - 如果 `fix_warnings` 非空，必须在该 step 的 description 末尾加上警告提示
 
 ### Step 间的实体传递
@@ -259,6 +303,15 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 ## 7. 阶段 5 — Report
 
 ### 流程
+
+Report 阶段只产出 **3 样东西**（不多不少）：
+
+1. **`render_report.py` stdout** — Markdown 报告（由工具调用��动展示）
+2. **`<!--event:done-->`** — 流程结束信号（assistant 文本）
+3. **summary JSON 代码块** — 交接契约（assistant 文本，独立代码块）
+
+### 步骤
+
 1. 汇总所有 Phase 的 Step 结果，构造 context JSON：
    ```json
    {
@@ -282,7 +335,7 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
          "reflection": {"choice": "A", "reason": "..."}
        }
      ],
-     "summary": { ... 见下方双输出协议 ... }
+     "summary": { ... 见下方 §8 交接契约 ... }
    }
    ```
 
@@ -298,61 +351,38 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 
 3. **必须**原样输出 stdout 作为最终报告，**禁止**二次改写、摘要或重排版
 
-4. **兜底**：如果 `report_rendering` 调用失败（如 args 类型校验错误），**直接在 assistant 消息中用 Markdown 格式输出报告**，包含：各 Phase 的步骤结果表格、关键发现、结构化交接契约 JSON。不要因为渲染失败就丢弃分析结果
+4. **兜底**：如果 `insight_report` 调用失败（如 args 类型校验错误），**直接在 assistant 消息中用 Markdown 格式输出报告**，包含：各 Phase 的步骤结果表格、关键发现、结构化交接契约 JSON。不要因为渲染失败就丢弃分析结果
 
-5. **无论报告渲染是否成功**，都必须在 assistant 消息末尾输出完整的结构化报告事件，供前端解析：
-   ```json
-   <!--event:report-->
-   {
-     "title": "CEI 低分 PON 口根因分析报告",
-     "goal": "找出 CEI 分数较低的 PON 口并分析原因",
-     "phases": [
-       {
-         "phase_id": 1,
-         "name": "L1-定位低分PON口",
-         "milestone": "识别CEI最低的PON口列表",
-         "table_level": "day",
-         "steps": [
-           {
-             "step_id": 1,
-             "insight_type": "OutstandingMin",
-             "significance": 0.73,
-             "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）",
-             "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]},
-             "chart_configs": { ... }
-           }
-         ],
-         "reflection": {"choice": "A", "reason": "..."}
-       }
-     ],
-     "summary": { ... 结构化交接契约 ... }
-   }
+5. **输出 done 事件**：
    ```
-   前端通过 `<!--event:report-->` 标记识别这是最终报告数据，可一次性渲染完整的多阶段报告页面。
-
-6. **最后输出 done 事件**：
-   ```json
    <!--event:done-->
    {"total_phases": 4, "total_steps": 12, "total_charts": 8}
    ```
 
+6. **输出 summary JSON 代码块**（见 §8 交接契约格式）
+
+🔴 **不要**输出 `<!--event:report-->` — 该事件不存在
+
 ---
 
-## 8. 双输出协议（关键）
+## 8. 输出契约（关键）
 
-给 Orchestrator 的返回包含**载荷 / 指针 / 交接契约**三类内容，遵循 provisioning.md §3 Step 4 的指针 vs 载荷纪律：
+InsightAgent 产出 3 类输出，各自独立、互不替代：
 
-### 面向用户的内容
-- Markdown 报告（`report_rendering` 的 stdout 原样输出）
-- 每个 Step 的 `chart_configs`（透传 ECharts option，前端渲染）
+### 8.1 脚本产出（自动展示，无需复述）
+- 调用 `run_insight.py` / `run_nl2code.py` / `render_report.py` 的 stdout JSON 会被自动展示
+- 包含 `chart_configs`（ECharts option JSON）、`filter_data`、报告 Markdown
+- stdout 中的 `phase_id` / `step_id` 字段用于关联 step_result 事件
+- **禁止**在 assistant 文本中复述脚本 stdout 的完整内容
 
-### 指针（必填，一句话陈述）
-在 assistant 里用指针简短陈述产出要点，帮助用户和 Orchestrator 感知流程：
-- 例：`✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
-- 例：`✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
+### 8.2 事件标记（assistant 文本中输出）
+- 按 §2「事件输出协议」在 assistant 文本中输出 `<!--event:xxx-->` + JSON
+- 同时用**指针**（一句话陈述）帮助感知流程进展：
+  - 例：`✅ 查询到 3 个低 CEI PON 口（PON-2/0/5 / PON-1/0/3 / PON-3/0/2），峰值时段 19:00-22:00`
+  - 例：`✅ 归因完成，雷达图指向"带宽利用率过高"和"丢包率超标"两个主因`
 
-### 结构化交接契约（必填，独立代码块）
-用于 Orchestrator 在用户要求生成方案时注入 PlanningAgent 作为 hints，**必须**以独立 JSON 代码块原样输出：
+### 8.3 交接契约（Report 末尾，独立 JSON 代码块）
+Report 末尾**必须**以独立 JSON 代码块输出 summary 契约：
 
 ```json
 {
@@ -384,20 +414,16 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 - **root_cause_fields** — L3 Phase 中 `OutstandingMax` / `OutlierDetection` 命中的细化字段名
 - **reflection_log** — 每个 Phase 反思的 `choice` + `reason`，便于 Orchestrator 理解分析路径
 
-Orchestrator 在用户要求生成方案时，把本摘要作为 hints 注入 PlanningAgent。
+此摘要供 Orchestrator 在后续流程中使用（如注入 PlanningAgent 作为 hints）。
 
 ---
 
-## 9. D10 停下等待用户确认
+## 9. 完成后停下
 
-完成报告后，**停下等待用户下一步**（由 Orchestrator 把关，你只需产出报告）：
+完成报告后，**停下等待用户下一步**：
 
-1. 呈现报告 + 摘要 JSON
-2. **禁止**自动进入 Planning 派发 Provisioning
-3. 用户选择：
-   - 只看报告 → 流程结束
-   - 要生成方案 → Orchestrator 调用 Planning，注入 summary 作为 hints
-   - 要换角度分析 → 再次调用本 Agent
+1. 输出报告 + summary JSON 代码块 + `<!--event:done-->`
+2. **禁止**自动进入方案设计或执行（后续流程不属于本 Agent 职责）
 
 ---
 
@@ -405,7 +431,7 @@ Orchestrator 在用户要求生成方案时，把本摘要作为 hints 注入 Pl
 
 - ❌ 不在 Skill 脚本里调用 LLM（LLM 决策全部在你这）
 - ❌ 不改写 `chart_configs` / `filter_data` / `found_entities`（前端渲染 + 后续下钻依赖原样）
-- ❌ 不改写 `report_rendering` 的 stdout（必须原样输出）
+- ❌ 不改写 `insight_report` 的 stdout（必须原样输出）
 - ❌ 不在本 Agent 里生成方案（方案归 PlanningAgent）
 - ❌ 不跳过 `get_skill_instructions` 直接猜参数（Step 1 强制）
 - ❌ 不在用户只要数据时自动生成归因报告（按 Phase 推进，按用户诉求停下）

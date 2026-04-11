@@ -10,7 +10,6 @@ import json
 import sys
 from typing import Any, Dict
 
-
 _CHECK_DIMENSIONS = [
     ("组网兼容性检查", "network_topology"),
     ("性能冲突检测", "performance_conflict"),
@@ -33,8 +32,7 @@ def review(plan_markdown: str = "") -> str:
         "violations": [],
         "recommendations": [],
         "checks": [
-            {"name": name, "dimension": dim, "result": "pass"}
-            for name, dim in _CHECK_DIMENSIONS
+            {"name": name, "dimension": dim, "result": "pass"} for name, dim in _CHECK_DIMENSIONS
         ],
     }
     return json.dumps(result, ensure_ascii=False, indent=2)

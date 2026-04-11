@@ -83,9 +83,7 @@ def _validate_ast(code: str) -> None:
     for node in ast.walk(tree):
         # 1. 禁止 import / from import
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            raise NL2CodeError(
-                f"禁止 import 语句（line {getattr(node, 'lineno', '?')}）"
-            )
+            raise NL2CodeError(f"禁止 import 语句（line {getattr(node, 'lineno', '?')}）")
         # 2. 禁止访问魔术属性
         if isinstance(node, ast.Attribute) and node.attr in _FORBIDDEN_ATTRS:
             raise NL2CodeError(
@@ -93,9 +91,7 @@ def _validate_ast(code: str) -> None:
             )
         # 3. 禁止直接调用危险 builtins（即使被重命名也会被下面 exec 时的 __builtins__ 拦截）
         if isinstance(node, ast.Name) and node.id in _FORBIDDEN_BUILTINS:
-            raise NL2CodeError(
-                f"禁止使用 `{node.id}`（line {getattr(node, 'lineno', '?')}）"
-            )
+            raise NL2CodeError(f"禁止使用 `{node.id}`（line {getattr(node, 'lineno', '?')}）")
 
 
 def run_nl2code(

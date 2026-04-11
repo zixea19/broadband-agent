@@ -43,21 +43,17 @@
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-
 import typer
-from typer import Option, Argument
+from matplotlib import pyplot as plt
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.panel import Panel
 from rich.table import Table
+from typer import Option
 
 app = typer.Typer(
     name="signal-sim",
@@ -156,9 +152,7 @@ class Cost231Model:
         if distance < 1.0:
             fspl = 20 * np.log10(1.0) + 20 * np.log10(self.frequency * 1000) - 27.55
         else:
-            fspl = (
-                20 * np.log10(distance) + 20 * np.log10(self.frequency * 1000) - 27.55
-            )
+            fspl = 20 * np.log10(distance) + 20 * np.log10(self.frequency * 1000) - 27.55
 
         total_loss = fspl + wall_attenuation
         return total_loss
@@ -204,9 +198,7 @@ def calculate_signal_strength(
 ) -> float:
     distance = np.sqrt((target_x - ap_x) ** 2 + (target_y - ap_y) ** 2)
     distance = max(distance, 0.1)
-    wall_attenuation = model.calculate_wall_attenuation(
-        ap_x, ap_y, target_x, target_y, grid_map
-    )
+    wall_attenuation = model.calculate_wall_attenuation(ap_x, ap_y, target_x, target_y, grid_map)
     rssi = model.calculate_rssi(distance, wall_attenuation)
     return rssi
 
@@ -337,9 +329,7 @@ def optimize_ap_placement(
             progress.update(task, advance=1)
 
             if not improved:
-                console.print(
-                    f"[yellow]迭代 {iteration + 1}: 无改进方向，停止优化[/yellow]"
-                )
+                console.print(f"[yellow]迭代 {iteration + 1}: 无改进方向，停止优化[/yellow]")
                 break
         else:
             console.print(f"[yellow]达到最大迭代次数 {max_iterations}[/yellow]")
@@ -356,32 +346,24 @@ def optimize_ap_placement(
     return best_positions, stats
 
 
-def _kmeans_initialization(
-    grid_map: GridMap, ap_count: int
-) -> List[Tuple[float, float]]:
+def _kmeans_initialization(grid_map: GridMap, ap_count: int) -> List[Tuple[float, float]]:
     free_positions = grid_map.get_free_space_positions()
 
     if len(free_positions) == 0:
         raise ValueError("没有可用的空旷区域")
 
-    meter_positions = np.array(
-        [grid_map.pixel_to_meter(px, py) for px, py in free_positions]
-    )
+    meter_positions = np.array([grid_map.pixel_to_meter(px, py) for px, py in free_positions])
 
     np.random.seed(42)
     indices = np.random.choice(len(meter_positions), size=ap_count, replace=False)
     centers = meter_positions[indices].copy()
 
     for _ in range(10):
-        labels = np.argmin(
-            np.linalg.norm(meter_positions[:, np.newaxis] - centers, axis=2), axis=1
-        )
+        labels = np.argmin(np.linalg.norm(meter_positions[:, np.newaxis] - centers, axis=2), axis=1)
 
         new_centers = np.array(
             [
-                meter_positions[labels == i].mean(axis=0)
-                if np.any(labels == i)
-                else centers[i]
+                meter_positions[labels == i].mean(axis=0) if np.any(labels == i) else centers[i]
                 for i in range(ap_count)
             ]
         )
@@ -567,25 +549,13 @@ def analyze_signal_distribution(rssi_matrix: np.ndarray, grid_map: GridMap) -> d
 @app.command()
 def simulate(
     grid: Path = Option(..., "--grid", "-g", help="栅格地图文件路径 (.npy)"),
-    ap: Optional[List[str]] = Option(
-        None, "--ap", "-a", help="AP 位置坐标（米），格式: 'x,y'"
-    ),
-    ap_count: Optional[int] = Option(
-        None, "--ap-count", "-n", help="AP 数量（启用自动优化）"
-    ),
-    grid_info: Optional[Path] = Option(
-        None, "--grid-info", help="栅格信息文件路径 (.json)"
-    ),
-    tx_power: float = Option(
-        20.0, "--tx-power", "-p", help="AP 发射功率（dBm，默认: 20）"
-    ),
-    frequency: float = Option(
-        5.0, "--frequency", "-f", help="WiFi 频率（GHz，默认: 5.0）"
-    ),
+    ap: Optional[List[str]] = Option(None, "--ap", "-a", help="AP 位置坐标（米），格式: 'x,y'"),
+    ap_count: Optional[int] = Option(None, "--ap-count", "-n", help="AP 数量（启用自动优化）"),
+    grid_info: Optional[Path] = Option(None, "--grid-info", help="栅格信息文件路径 (.json)"),
+    tx_power: float = Option(20.0, "--tx-power", "-p", help="AP 发射功率（dBm，默认: 20）"),
+    frequency: float = Option(5.0, "--frequency", "-f", help="WiFi 频率（GHz，默认: 5.0）"),
     ap_height: float = Option(1.5, "--ap-height", help="AP 高度（米，默认: 1.5）"),
-    output_dir: Path = Option(
-        Path("output/signal"), "--output-dir", "-o", help="输出目录"
-    ),
+    output_dir: Path = Option(Path("output/signal"), "--output-dir", "-o", help="输出目录"),
     colormap: str = Option("RdYlGn", "--colormap", "-c", help="热力图颜色映射"),
     visualize: bool = Option(False, "--visualize", "-v", help="显示可视化结果"),
     fast: bool = Option(True, "--fast", help="使用快速模式（向量化计算，适合大网格）"),
@@ -608,9 +578,7 @@ def simulate(
         raise typer.Exit(1)
 
     if ap is not None and ap_count is not None:
-        console.print(
-            "[yellow]警告：同时指定了 --ap 和 --ap-count，优先使用 --ap[/yellow]"
-        )
+        console.print("[yellow]警告：同时指定了 --ap 和 --ap-count，优先使用 --ap[/yellow]")
 
     if not grid.exists():
         console.print(f"[red]错误：栅格地图不存在: {grid}[/red]")
@@ -660,9 +628,7 @@ def simulate(
                 x, y = map(float, ap_str.split(","))
                 ap_positions.append((x, y))
             except ValueError:
-                console.print(
-                    f"[red]错误：无效的AP坐标格式: {ap_str}，应为 'x,y'[/red]"
-                )
+                console.print(f"[red]错误：无效的AP坐标格式: {ap_str}，应为 'x,y'[/red]")
                 raise typer.Exit(1)
 
         console.print(f"[blue]手动指定AP位置 ({len(ap_positions)} 个):[/blue]")
@@ -800,9 +766,7 @@ def simulate(
 
     if optimization_stats:
         summary_table.add_row("优化迭代:", f"{optimization_stats['iterations']} 次")
-        summary_table.add_row(
-            "收敛状态:", "是" if optimization_stats["converged"] else "否"
-        )
+        summary_table.add_row("收敛状态:", "是" if optimization_stats["converged"] else "否")
 
     console.print(summary_table)
 
@@ -911,9 +875,7 @@ def _is_valid_ap_position(grid_map: GridMap, x: float, y: float) -> bool:
     return False
 
 
-def _kmeans_initialization_fast(
-    grid_map: GridMap, ap_count: int
-) -> List[Tuple[float, float]]:
+def _kmeans_initialization_fast(grid_map: GridMap, ap_count: int) -> List[Tuple[float, float]]:
     from sklearn.cluster import KMeans
 
     free_space = []
@@ -940,11 +902,7 @@ def _kmeans_initialization_fast(
     positions = []
     for cx, cy in kmeans.cluster_centers_:
         px, py = grid_map.meter_to_pixel(cx, cy)
-        if (
-            0 <= px < grid_map.width
-            and 0 <= py < grid_map.height
-            and grid_map.grid[py, px] == 0
-        ):
+        if 0 <= px < grid_map.width and 0 <= py < grid_map.height and grid_map.grid[py, px] == 0:
             positions.append((float(cx), float(cy)))
         else:
             distances = np.linalg.norm(free_space - [cx, cy], axis=1)

@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -14,9 +15,9 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parents[1])
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from core.observability.logger import setup_logger
 from core.observability.db import db
-from core.session_manager import SessionContext, session_manager
+from core.observability.logger import setup_logger
+from core.session_manager import session_manager
 from ui.chat_renderer import (
     render_member_badge,
     render_member_content,
@@ -50,7 +51,7 @@ def _normalize_event_type(raw: str) -> str:
     if not raw:
         return ""
     if raw.startswith("Team"):
-        return raw[len("Team"):]
+        return raw[len("Team") :]
     return raw
 
 
@@ -104,8 +105,9 @@ async def chat_handler(
 
     # Trace 用户请求
     ctx.tracer.request(message)
+    user_msg_id: Optional[int] = None
     if ctx.db_session_id:
-        db.insert_message(ctx.db_session_id, "user", message)
+        user_msg_id = db.insert_message(ctx.db_session_id, "user", message)
 
     # 添加用户消息到历史
     history = history + [{"role": "user", "content": message}]
@@ -113,12 +115,28 @@ async def chat_handler(
 
     full_content = ""
     reasoning_buffer = ""
-    reasoning_source: Optional[str] = None      # 当前 in-flight thinking 归属的 source_id
-    current_member: Optional[str] = None        # 最近一次 member 事件的 source_id (非 leader)
+    reasoning_source: Optional[str] = None  # 当前 in-flight thinking 归属的 source_id
+    current_member: Optional[str] = None  # 最近一次 member 事件的 source_id (非 leader)
     # 本轮已渲染过徽章的 member 集合 — 每个 SubAgent 只展示一次入场标记。
     seen_members: set = set()
     # per-member content 缓冲区 — 用于流式展示 SubAgent 的文本回复
     member_content_buffers: Dict[str, str] = {}
+    # tool call 计时器 — ToolCallStarted 时记录，ToolCallCompleted 时计算延迟
+    tool_start_times: Dict[str, float] = {}
+
+    def _build_streaming_tail() -> List[Dict[str, Any]]:
+        """构造流式 yield 时附加的全部 pending 内容（解决 member 内容闪烁问题）。
+
+        每次 yield 时，除了 history 之外，还要附加所有 pending 的 member buffer
+        和 leader content，避免某个 source 的 yield 覆盖其他 source 的内容导致闪烁。
+        """
+        tail: List[Dict[str, Any]] = []
+        for mid, mc in member_content_buffers.items():
+            if mc:
+                tail.append(render_member_content(mc, member=mid))
+        if full_content:
+            tail.append(render_response(full_content))
+        return tail
 
     def _agent_id(sid: Optional[str], leader: bool) -> str:
         """从 source_id + is_leader 推导 agent 标识符。"""
@@ -176,7 +194,11 @@ async def chat_handler(
                     history = _flush_reasoning(history)
                     reasoning_source = source_id
                 reasoning_buffer += delta
-                yield history + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                yield (
+                    history
+                    + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                    + _build_streaming_tail()
+                )
 
             elif event_type == "ReasoningCompleted":
                 # 只 flush 匹配 source 的 buffer, 防止误伤其他 member 的 in-flight 思考
@@ -190,43 +212,64 @@ async def chat_handler(
                     history = _flush_reasoning(history)
                 tool = getattr(event, "tool", None)
                 if tool:
-                    tool_name = (
-                        getattr(tool, "tool_name", "")
-                        or getattr(tool, "function_name", "unknown")
+                    tool_name = getattr(tool, "tool_name", "") or getattr(
+                        tool, "function_name", "unknown"
                     )
-                    tool_args = (
-                        getattr(tool, "tool_args", None)
-                        or getattr(tool, "function_args", None)
+                    tool_args = getattr(tool, "tool_args", None) or getattr(
+                        tool, "function_args", None
                     )
+                    # 记录工具调用开始时间，用于计算延迟
+                    _tool_key = f"{source_id or ''}:{tool_name}"
+                    tool_start_times[_tool_key] = time.monotonic()
                     ctx.tracer.tool_invoke(tool_name, tool_args, agent=agent, is_leader=is_leader)
                     tool_label_source = source_id if not is_leader else None
-                    yield history + render_tool_call(
-                        tool_name, inputs=tool_args, member=tool_label_source
+                    yield (
+                        history
+                        + render_tool_call(tool_name, inputs=tool_args, member=tool_label_source)
+                        + _build_streaming_tail()
                     )
 
             # ---- 工具调用完成 ----
             elif event_type == "ToolCallCompleted":
                 tool = getattr(event, "tool", None)
                 if tool:
-                    tool_name = (
-                        getattr(tool, "tool_name", "")
-                        or getattr(tool, "function_name", "unknown")
+                    tool_name = getattr(tool, "tool_name", "") or getattr(
+                        tool, "function_name", "unknown"
                     )
-                    tool_args = (
-                        getattr(tool, "tool_args", None)
-                        or getattr(tool, "function_args", None)
+                    tool_args = getattr(tool, "tool_args", None) or getattr(
+                        tool, "function_args", None
                     )
-                    tool_result = getattr(tool, "result", None) or getattr(
-                        event, "content", None
+                    tool_result = getattr(tool, "result", None) or getattr(event, "content", None)
+                    # 计算工具调用延迟
+                    _tool_key = f"{source_id or ''}:{tool_name}"
+                    _start = tool_start_times.pop(_tool_key, None)
+                    _latency_ms = int((time.monotonic() - _start) * 1000) if _start else 0
+                    ctx.tracer.tool_result(
+                        tool_name,
+                        tool_result,
+                        latency_ms=_latency_ms,
+                        agent=agent,
+                        is_leader=is_leader,
                     )
-                    ctx.tracer.tool_result(tool_name, tool_result, agent=agent, is_leader=is_leader)
                     if ctx.db_session_id:
+                        _inputs_str = (
+                            json.dumps(tool_args, ensure_ascii=False, default=str)
+                            if tool_args and not isinstance(tool_args, str)
+                            else (tool_args or "")
+                        )
+                        _outputs_str = (
+                            json.dumps(tool_result, ensure_ascii=False, default=str)
+                            if tool_result and not isinstance(tool_result, str)
+                            else (tool_result or "")
+                        )
                         db.insert_tool_call(
                             ctx.db_session_id,
                             skill_name=tool_name,
-                            inputs_json=str(tool_args) if tool_args else "",
-                            outputs_json=str(tool_result)[:4000] if tool_result else "",
+                            inputs_json=_inputs_str,
+                            outputs_json=_outputs_str,
+                            latency_ms=_latency_ms,
                             status="ok",
+                            message_id=user_msg_id,
                         )
                     # delegate_task_to_member 去重: 如果 member content 已通过
                     # RunContent 展示, 则只显示摘要, 避免重复输出完整内容
@@ -271,7 +314,11 @@ async def chat_handler(
                         history = _flush_reasoning(history)
                         reasoning_source = source_id
                     reasoning_buffer += reasoning_delta
-                    yield history + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                    yield (
+                        history
+                        + [render_thinking(reasoning_buffer, member=reasoning_source)]
+                        + _build_streaming_tail()
+                    )
 
                 content_delta = getattr(event, "content", None)
                 if content_delta is not None and reasoning_buffer and source_id == reasoning_source:
@@ -280,11 +327,11 @@ async def chat_handler(
                 if content_delta:
                     if is_leader:
                         full_content += str(content_delta)
-                        yield history + [render_response(full_content)]
                     elif source_id:
                         buf = member_content_buffers.get(source_id, "") + str(content_delta)
                         member_content_buffers[source_id] = buf
-                        yield history + [render_member_content(buf, member=source_id)]
+                    # 统一使用 _build_streaming_tail 渲染所有 pending 内容
+                    yield history + _build_streaming_tail()
 
             # ---- 运行完成 ----
             elif event_type == "RunCompleted":
@@ -294,7 +341,9 @@ async def chat_handler(
                         full_content = str(final)
                     # 记录 leader 完成 (带最终内容)
                     ctx.tracer.stream_event(
-                        raw_event_type, agent=agent, is_leader=True,
+                        raw_event_type,
+                        agent=agent,
+                        is_leader=True,
                         content=str(final) if final else "",
                     )
                 else:
@@ -304,12 +353,54 @@ async def chat_handler(
                         if mc:
                             ctx.tracer.member_content(source_id, mc)
                             history = history + [render_member_content(mc, member=source_id)]
+                            # 存储 member content 到 DB messages 表
+                            if ctx.db_session_id:
+                                db.insert_message(
+                                    ctx.db_session_id,
+                                    "assistant",
+                                    mc,
+                                    parent_msg_id=user_msg_id,
+                                )
                             yield history
                     final_content = getattr(event, "content", None)
                     ctx.tracer.member_completed(
                         source_id or "unknown",
                         content=str(final_content) if final_content else "",
                     )
+
+            # ---- 工具/Agent 错误事件 — 向用户可见化 ----
+            elif event_type in ("ToolCallError", "ToolCallFailed"):
+                tool = getattr(event, "tool", None)
+                error_content = getattr(event, "content", "") or getattr(event, "error", "")
+                tool_name = getattr(tool, "tool_name", "unknown") if tool else "unknown"
+                _error_str = str(error_content)
+                ctx.tracer.stream_event(
+                    raw_event_type,
+                    agent=agent,
+                    is_leader=is_leader,
+                    tool_name=tool_name,
+                    content=_error_str,
+                )
+                # 错误事件也写入 tool_calls 表，status=error（完整存储）
+                if ctx.db_session_id:
+                    db.insert_tool_call(
+                        ctx.db_session_id,
+                        skill_name=tool_name,
+                        inputs_json="",
+                        outputs_json=_error_str,
+                        status="error",
+                        message_id=user_msg_id,
+                    )
+                # UI 展示可截取摘要，完整错误已在 DB/trace 中
+                _display_error = _error_str[:500] if len(_error_str) > 500 else _error_str
+                history = history + [
+                    {
+                        "role": "assistant",
+                        "metadata": {"title": f"⚠️ 工具执行失败: {tool_name}"},
+                        "content": _display_error or "未知错误",
+                    }
+                ]
+                yield history
 
             # ---- 未识别事件 — 全量记录到 trace 供调试 ----
             else:
@@ -401,8 +492,7 @@ def create_app() -> gr.Blocks:
     with gr.Blocks(title="家宽网络调优助手", css=_CSS) as app:
         gr.Markdown("# 🏠 家宽网络调优智能助手")
         gr.Markdown(
-            "Team 架构：Orchestrator 路由 → PlanningAgent / InsightAgent / "
-            "ProvisioningAgent × 3"
+            "Team 架构：Orchestrator 路由 → PlanningAgent / InsightAgent / ProvisioningAgent × 3"
         )
 
         session_state = gr.State(value={"session_hash": str(uuid.uuid4())})
@@ -419,9 +509,7 @@ def create_app() -> gr.Blocks:
         for row_msgs in rows:
             with gr.Row():
                 for msg in row_msgs:
-                    example_btns.append(
-                        gr.Button(msg, elem_classes=["example-btn"], size="sm")
-                    )
+                    example_btns.append(gr.Button(msg, elem_classes=["example-btn"], size="sm"))
 
         with gr.Row():
             msg_input = gr.Textbox(
@@ -485,6 +573,14 @@ def create_app() -> gr.Blocks:
             return [], {"session_hash": new_hash}
 
         new_session_btn.click(fn=new_session, outputs=[chatbot, session_state])
+
+        # Session 生命周期关闭 — 页面卸载时销毁会话，写入 ended_at
+        def _on_unload(sess_state):
+            sh = (sess_state or {}).get("session_hash")
+            if sh:
+                session_manager.destroy(sh)
+
+        app.unload(_on_unload, inputs=[session_state])
 
     return app
 

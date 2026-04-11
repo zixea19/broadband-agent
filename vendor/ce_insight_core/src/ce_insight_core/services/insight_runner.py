@@ -4,20 +4,22 @@
 """
 
 import logging
+
 import pandas as pd
+
 from ce_insight_core.services.insight_strategy import (
     AttributionStrategy,
-    TrendStrategy,
-    ClusteringStrategy,
-    OutlierDetectionStrategy,
-    CorrelationStrategy,
-    SeasonalityStrategy,
     ChangePointStrategy,
+    ClusteringStrategy,
+    CorrelationStrategy,
+    CrossMeasureCorrelationStrategy,
     EvennessStrategy,
+    OutlierDetectionStrategy,
     OutstandingMaxStrategy,
     OutstandingMinStrategy,
     OutstandingTop2Strategy,
-    CrossMeasureCorrelationStrategy,
+    SeasonalityStrategy,
+    TrendStrategy,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,8 +72,16 @@ def run_insight(
     strategy = cls(df)
 
     # 需要 group_column 的类型，如果没传则返回错误
-    NEEDS_GROUP = {"Attribution", "Evenness", "OutstandingMax", "OutstandingMin",
-                   "OutstandingTop2", "Trend", "Seasonality", "ChangePoint"}
+    NEEDS_GROUP = {
+        "Attribution",
+        "Evenness",
+        "OutstandingMax",
+        "OutstandingMin",
+        "OutstandingTop2",
+        "Trend",
+        "Seasonality",
+        "ChangePoint",
+    }
     if insight_type in NEEDS_GROUP and (not group_column or group_column not in df.columns):
         return {
             "insight_type": insight_type,
@@ -89,7 +99,9 @@ def run_insight(
     # 校验列名存在
     missing = [c for c in value_columns if c not in df.columns]
     if missing:
-        logger.warning("%s: 列 %s 不在 df 中（可用: %s）", insight_type, missing, list(df.columns)[:8])
+        logger.warning(
+            "%s: 列 %s 不在 df 中（可用: %s）", insight_type, missing, list(df.columns)[:8]
+        )
         return {
             "insight_type": insight_type,
             "significance": 0.0,

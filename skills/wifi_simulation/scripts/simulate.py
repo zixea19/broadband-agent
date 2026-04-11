@@ -58,7 +58,9 @@ def _resolve_floorplan_image(params: Dict[str, Any]) -> Path:
     sample = _SKILL_DIR / "references" / "sample_floorplan.jpg"
     if sample.exists():
         return sample
-    raise FileNotFoundError("未找到户型图图片，请提供 floor_plan_image 参数或将样例图放入 references/")
+    raise FileNotFoundError(
+        "未找到户型图图片，请提供 floor_plan_image 参数或将样例图放入 references/"
+    )
 
 
 def _run_step1_floorplan(
@@ -242,9 +244,7 @@ def simulate(params_json: str = "{}") -> str:
     try:
         params = json.loads(params_json) if params_json else {}
     except json.JSONDecodeError:
-        return json.dumps(
-            {"error": "参数 JSON 解析失败", "status": "error"}, ensure_ascii=False
-        )
+        return json.dumps({"error": "参数 JSON 解析失败", "status": "error"}, ensure_ascii=False)
 
     merged = {**_DEFAULTS, **params}
 

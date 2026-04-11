@@ -2,13 +2,12 @@
 聚类分析：对多指标数据做 KMeans 聚类，识别不同特征群体。
 """
 
-import pandas as pd
 import numpy as np
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class ClusteringStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         from sklearn.cluster import KMeans
         from sklearn.preprocessing import StandardScaler
@@ -55,24 +54,31 @@ class ClusteringStrategy(InsightStrategy):
         self._significance_score = float(np.clip(best_score, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            base_title, base_tooltip, PALETTE,
+            PALETTE,
+            base_title,
+            base_tooltip,
         )
+
         x_col = value_columns[0]
         y_col = value_columns[1] if len(value_columns) > 1 else value_columns[0]
         series = []
         for c in range(best_k):
             mask = df["cluster"] == c
             count = int(mask.sum())
-            series.append({
-                "name": f"簇{c} ({count}个)",
-                "type": "scatter",
-                "data": list(zip(
-                    df.loc[mask, x_col].round(2).tolist(),
-                    df.loc[mask, y_col].round(2).tolist(),
-                )),
-                "itemStyle": {"color": PALETTE[c % len(PALETTE)], "opacity": 0.7},
-                "symbolSize": 6,
-            })
+            series.append(
+                {
+                    "name": f"簇{c} ({count}个)",
+                    "type": "scatter",
+                    "data": list(
+                        zip(
+                            df.loc[mask, x_col].round(2).tolist(),
+                            df.loc[mask, y_col].round(2).tolist(),
+                        )
+                    ),
+                    "itemStyle": {"color": PALETTE[c % len(PALETTE)], "opacity": 0.7},
+                    "symbolSize": 6,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "scatter",

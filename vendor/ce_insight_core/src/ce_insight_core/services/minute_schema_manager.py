@@ -5,7 +5,6 @@
 
 import logging
 import re
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -528,7 +527,9 @@ def get_minute_schema(focus_dimensions: list[str]) -> str:
 
     # 追加所有可用分钟表字段名列表，硬约束 LLM 只能使用这些字段
     all_fields = sorted(get_all_minute_fields())
-    parts.append("🔴🔴🔴 以下是分钟表全部合法字段名。measures.name 只能从此列表选取！使用列表外的字段（如天表的 linkFlapCnt、oltRxPowerHighCnt 等）将导致查询失败！🔴🔴🔴")
+    parts.append(
+        "🔴🔴🔴 以下是分钟表全部合法字段名。measures.name 只能从此列表选取！使用列表外的字段（如天表的 linkFlapCnt、oltRxPowerHighCnt 等）将导致查询失败！🔴🔴🔴"
+    )
     parts.append(", ".join(all_fields))
     parts.append("")
 

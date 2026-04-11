@@ -3,8 +3,8 @@
 执行每个步骤前必须先修复三元组，处理 LLM 生成的常见错误。
 """
 
-import re
 import logging
+import re
 from copy import deepcopy
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ def _strip_aggr_suffix_if_needed(name: str, valid_fields: set[str] | None) -> st
     if stripped2 != name and stripped2 in valid_fields:
         return stripped2
     return name  # 都不匹配就原样返回，后续会告警
+
 
 # 分钟表字段关键词→合法字段的模糊匹配映射
 # 当 LLM 编造不存在的字段名时，用关键词匹配最接近的合法字段
@@ -174,12 +175,14 @@ def _fix_measures(measures: list[dict], table_level: str = "day") -> tuple[list[
     if table_level == "minute":
         try:
             from ce_insight_core.services.minute_schema_manager import get_all_minute_fields
+
             minute_valid = get_all_minute_fields()
         except ImportError:
             minute_valid = None
     else:
         try:
             from ce_insight_core.services.day_schema_manager import get_all_day_fields
+
             day_valid = get_all_day_fields()
         except ImportError:
             day_valid = None
@@ -242,9 +245,7 @@ def _fix_measures(measures: list[dict], table_level: str = "day") -> tuple[list[
 def _pick_minute_fallback(original_measures: list[dict]) -> str:
     """根据原始 measures 的语义，选择最相关的分钟表字段兜底"""
     # 从原始字段名中提取关键词（跳过 None/非 dict）
-    names = " ".join(
-        m.get("name", "") for m in original_measures if isinstance(m, dict)
-    ).lower()
+    names = " ".join(m.get("name", "") for m in original_measures if isinstance(m, dict)).lower()
     # 按业务语义匹配
     if any(kw in names for kw in ("stability", "alarm", "interrupt", "count", "flap")):
         return "alarmCount"
@@ -350,11 +351,16 @@ def _fix_dimensions(dimensions: list, breakdown_name: str) -> list:
                     # 让 query 正常带着 filter 执行，少量分组洞察函数会自己处理
                     logger.info(
                         "dimension '%s' 与 breakdown 相同且过滤值较少（%d个），保留过滤条件",
-                        dim_name, len(in_values),
+                        dim_name,
+                        len(in_values),
                     )
                 else:
                     # 多值过滤+同字段分组是合理的（筛选出一批设备，然后对比它们）
-                    logger.info("dimension '%s' 与 breakdown 相同但过滤值较多（%d个），保留", dim_name, len(in_values))
+                    logger.info(
+                        "dimension '%s' 与 breakdown 相同但过滤值较多（%d个），保留",
+                        dim_name,
+                        len(in_values),
+                    )
 
             dim_cond["dimension"] = dim_info
             fixed_group.append(dim_cond)

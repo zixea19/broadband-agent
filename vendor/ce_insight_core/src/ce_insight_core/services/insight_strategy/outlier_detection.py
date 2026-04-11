@@ -3,15 +3,16 @@
 """
 
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 logger = logging.getLogger(__name__)
 
 
 class OutlierDetectionStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         col = value_columns[0]
@@ -51,7 +52,9 @@ class OutlierDetectionStrategy(InsightStrategy):
             iqr_mask = (work_series < iqr_lower) | (work_series > iqr_upper)
         else:
             # IQR=0 时用众数偏离检测
-            mode_val = work_series.mode().iloc[0] if not work_series.mode().empty else work_series.median()
+            mode_val = (
+                work_series.mode().iloc[0] if not work_series.mode().empty else work_series.median()
+            )
             iqr_mask = work_series != mode_val
             iqr_lower = float(mode_val)
             iqr_upper = float(mode_val)
@@ -61,7 +64,9 @@ class OutlierDetectionStrategy(InsightStrategy):
         std_val = work_series.std()
         if std_val > 1e-10:
             z_threshold = 2 if is_near_zero else 3
-            z_mask = (work_series > mean_val + z_threshold * std_val) | (work_series < mean_val - z_threshold * std_val)
+            z_mask = (work_series > mean_val + z_threshold * std_val) | (
+                work_series < mean_val - z_threshold * std_val
+            )
         else:
             z_mask = abs(work_series - mean_val) > 1e-10
 
@@ -81,7 +86,9 @@ class OutlierDetectionStrategy(InsightStrategy):
 
         # 统计列
         if not outliers.empty and std_val > 0:
-            outliers["标准化偏差"] = abs(outliers[col] - series.mean()) / (series.std() if series.std() > 0 else 1)
+            outliers["标准化偏差"] = abs(outliers[col] - series.mean()) / (
+                series.std() if series.std() > 0 else 1
+            )
             outliers = outliers.sort_values("标准化偏差", ascending=False)
 
         self._filter_data = outliers
@@ -106,8 +113,8 @@ class OutlierDetectionStrategy(InsightStrategy):
             "zero_ratio": round(zero_ratio, 4),
             "is_near_zero": is_near_zero,
             "summary": f"{col} 检测到 {len(outliers)} 个异常值（{outlier_ratio:.1%}），"
-                       f"IQR法{int(iqr_mask.sum())}个 + Z-score法{int(z_mask.sum())}个"
-                       + (f"，零值占比{zero_ratio:.1%}" if zero_ratio > 0.5 else ""),
+            f"IQR法{int(iqr_mask.sum())}个 + Z-score法{int(z_mask.sum())}个"
+            + (f"，零值占比{zero_ratio:.1%}" if zero_ratio > 0.5 else ""),
         }
 
         # 显著性：综合异常比例和最大偏差
@@ -119,23 +126,43 @@ class OutlierDetectionStrategy(InsightStrategy):
 
         # ---- 图表 ----
         from ce_insight_core.services.insight_strategy.chart_style import (
-            base_title, base_tooltip, truncate_labels, BLUE, HIGHLIGHT_RED, ORANGE,
+            BLUE,
+            HIGHLIGHT_RED,
+            base_title,
+            base_tooltip,
+            truncate_labels,
         )
 
         # 用 group_column 做 x 轴标签（如果有），否则用序号
         if group_column and group_column in df.columns:
             labels = truncate_labels(df[group_column].astype(str).tolist())
-            x_axis = {"type": "category", "data": labels, "axisLabel": {"fontSize": 10, "rotate": 30}}
-            normal_data = [{"value": [labels[i], round(float(v), 2)]}
-                           for i, (v, o) in enumerate(zip(df[col], df["is_outlier"])) if not o]
-            outlier_data_chart = [{"value": [labels[i], round(float(v), 2)]}
-                                  for i, (v, o) in enumerate(zip(df[col], df["is_outlier"])) if o]
+            x_axis = {
+                "type": "category",
+                "data": labels,
+                "axisLabel": {"fontSize": 10, "rotate": 30},
+            }
+            normal_data = [
+                {"value": [labels[i], round(float(v), 2)]}
+                for i, (v, o) in enumerate(zip(df[col], df["is_outlier"]))
+                if not o
+            ]
+            outlier_data_chart = [
+                {"value": [labels[i], round(float(v), 2)]}
+                for i, (v, o) in enumerate(zip(df[col], df["is_outlier"]))
+                if o
+            ]
         else:
             x_axis = {"type": "value", "name": "序号", "nameTextStyle": {"fontSize": 11}}
-            normal_data = [[i, round(float(v), 2)]
-                           for i, (v, o) in enumerate(zip(df[col], df["is_outlier"])) if not o]
-            outlier_data_chart = [[i, round(float(v), 2)]
-                                  for i, (v, o) in enumerate(zip(df[col], df["is_outlier"])) if o]
+            normal_data = [
+                [i, round(float(v), 2)]
+                for i, (v, o) in enumerate(zip(df[col], df["is_outlier"]))
+                if not o
+            ]
+            outlier_data_chart = [
+                [i, round(float(v), 2)]
+                for i, (v, o) in enumerate(zip(df[col], df["is_outlier"]))
+                if o
+            ]
 
         self._chart_configs = {
             "chart_type": "scatter",
@@ -147,14 +174,18 @@ class OutlierDetectionStrategy(InsightStrategy):
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
             "series": [
                 {
-                    "name": "正常值", "type": "scatter",
+                    "name": "正常值",
+                    "type": "scatter",
                     "data": normal_data,
-                    "itemStyle": {"color": BLUE, "opacity": 0.4}, "symbolSize": 5,
+                    "itemStyle": {"color": BLUE, "opacity": 0.4},
+                    "symbolSize": 5,
                 },
                 {
-                    "name": f"异常点 ({len(outliers)})", "type": "scatter",
+                    "name": f"异常点 ({len(outliers)})",
+                    "type": "scatter",
                     "data": outlier_data_chart,
-                    "itemStyle": {"color": HIGHLIGHT_RED}, "symbolSize": 8,
+                    "itemStyle": {"color": HIGHLIGHT_RED},
+                    "symbolSize": 8,
                 },
             ],
             "markLine_data": {

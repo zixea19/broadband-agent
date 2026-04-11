@@ -6,13 +6,14 @@
 """
 
 from collections import Counter
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 
 class OutstandingMaxStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
         group_column: str = kwargs.get("group_column", "")
@@ -64,14 +65,20 @@ class OutstandingMaxStrategy(InsightStrategy):
             "gap": round(gap, 2),
             "z_score": round(float(z_score), 4),
             "summary": f"{col} 最大值出现在 {max_group}（{max_val:.2f}），"
-                       f"高出第二名 {gap:.2f}，z-score={z_score:.2f}",
+            f"高出第二名 {gap:.2f}，z-score={z_score:.2f}",
         }
         self._significance_score = float(np.clip(abs(z_score) / 3, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, BLUE, HIGHLIGHT_RED,
+            BLUE,
+            HIGHLIGHT_RED,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
+
         top_n = 10
         display_df = result_df.head(top_n)
         display_labels = truncate_labels(display_df[group_column].astype(str).tolist())
@@ -82,14 +89,22 @@ class OutstandingMaxStrategy(InsightStrategy):
             "title": base_title(f"{col} 最大值分析 (Top{min(top_n, len(result_df))})"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
-            "xAxis": {"type": "category", "data": display_labels,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {
+                "type": "category",
+                "data": display_labels,
+                "axisLabel": rotated_axis_label(30),
+            },
             "yAxis": {"type": "value", "name": col, "nameTextStyle": {"fontSize": 11}},
-            "series": [{
-                "type": "bar",
-                "data": [{"value": v, "itemStyle": {"color": c}} for v, c in zip(display_vals, colors)],
-                "barMaxWidth": 40,
-            }],
+            "series": [
+                {
+                    "type": "bar",
+                    "data": [
+                        {"value": v, "itemStyle": {"color": c}}
+                        for v, c in zip(display_vals, colors)
+                    ],
+                    "barMaxWidth": 40,
+                }
+            ],
         }
 
     # ------------------------------------------------------------------
@@ -97,8 +112,13 @@ class OutstandingMaxStrategy(InsightStrategy):
     # ------------------------------------------------------------------
     def _execute_measure_compare(self, value_columns: list[str], group_column: str) -> None:
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, PALETTE, HIGHLIGHT_RED,
+            HIGHLIGHT_RED,
+            PALETTE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
 
         if group_column and group_column in self._df.columns:
@@ -137,21 +157,24 @@ class OutstandingMaxStrategy(InsightStrategy):
         self._significance_score = float(np.clip(abs(z_score) / 3, 0, 1))
 
         groups = truncate_labels(agg_df.index.astype(str).tolist())
-        colors = PALETTE[:len(value_columns)]
+        colors = PALETTE[: len(value_columns)]
 
         series = []
         for i, col in enumerate(value_columns):
             if col not in agg_df.columns:
                 continue
             color = HIGHLIGHT_RED if col == max_measure else colors[i % len(colors)]
-            series.append({
-                "name": col,
-                "type": "bar",
-                "data": [round(float(v), 2) if not pd.isna(v) else 0
-                         for v in agg_df[col].tolist()],
-                "itemStyle": {"color": color},
-                "barMaxWidth": 30,
-            })
+            series.append(
+                {
+                    "name": col,
+                    "type": "bar",
+                    "data": [
+                        round(float(v), 2) if not pd.isna(v) else 0 for v in agg_df[col].tolist()
+                    ],
+                    "itemStyle": {"color": color},
+                    "barMaxWidth": 30,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "bar",
@@ -159,8 +182,7 @@ class OutstandingMaxStrategy(InsightStrategy):
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
             "legend": {"show": True, "top": 30, "textStyle": {"fontSize": 10}},
-            "xAxis": {"type": "category", "data": groups,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {"type": "category", "data": groups, "axisLabel": rotated_axis_label(30)},
             "yAxis": {"type": "value", "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }
@@ -170,8 +192,13 @@ class OutstandingMaxStrategy(InsightStrategy):
     # ------------------------------------------------------------------
     def _execute_matrix(self, value_columns: list[str], group_column: str) -> None:
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_grid, base_title, base_tooltip,
-            rotated_axis_label, PALETTE, HIGHLIGHT_RED,
+            HIGHLIGHT_RED,
+            PALETTE,
+            base_grid,
+            base_title,
+            base_tooltip,
+            rotated_axis_label,
+            truncate_labels,
         )
 
         agg_df = self._df.groupby(group_column)[value_columns].mean().dropna(how="all")
@@ -266,27 +293,28 @@ class OutstandingMaxStrategy(InsightStrategy):
                 v = agg_df.loc[group_key, col] if group_key in agg_df.index else None
                 val = round(float(v), 4) if pd.notna(v) else 0
                 is_best = per_group_best.get(group_key, {}).get("measure") == col
-                data_points.append({
-                    "value": val,
-                    "itemStyle": {"color": HIGHLIGHT_RED if is_best else base_color},
-                })
-            series.append({
-                "name": col,
-                "type": "bar",
-                "data": data_points,
-                "barMaxWidth": 30,
-            })
+                data_points.append(
+                    {
+                        "value": val,
+                        "itemStyle": {"color": HIGHLIGHT_RED if is_best else base_color},
+                    }
+                )
+            series.append(
+                {
+                    "name": col,
+                    "type": "bar",
+                    "data": data_points,
+                    "barMaxWidth": 30,
+                }
+            )
 
         self._chart_configs = {
             "chart_type": "bar",
-            "title": base_title(
-                f"各 {group_column} 的维度对比（各自最高标红）"
-            ),
+            "title": base_title(f"各 {group_column} 的维度对比（各自最高标红）"),
             "tooltip": base_tooltip("axis"),
             "grid": base_grid(),
             "legend": {"show": True, "top": 30, "textStyle": {"fontSize": 10}},
-            "xAxis": {"type": "category", "data": groups,
-                      "axisLabel": rotated_axis_label(30)},
+            "xAxis": {"type": "category", "data": groups, "axisLabel": rotated_axis_label(30)},
             "yAxis": {"type": "value", "nameTextStyle": {"fontSize": 11}},
             "series": series,
         }

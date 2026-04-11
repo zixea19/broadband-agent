@@ -3,16 +3,17 @@
 """
 
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from scipy import stats
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 logger = logging.getLogger(__name__)
 
 
 class CorrelationStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
 
@@ -74,8 +75,12 @@ class CorrelationStrategy(InsightStrategy):
         self._significance_score = float(np.clip(abs_corr, 0, 1))
 
         from ce_insight_core.services.insight_strategy.chart_style import (
-            base_title, base_tooltip, BLUE, HIGHLIGHT_RED, PINK,
+            BLUE,
+            PINK,
+            base_title,
+            base_tooltip,
         )
+
         x_vals = df[col_x].values.astype(float)
         y_vals = df[col_y].values.astype(float)
         # 趋势线
@@ -91,15 +96,19 @@ class CorrelationStrategy(InsightStrategy):
             "yAxis": {"type": "value", "name": col_y, "nameTextStyle": {"fontSize": 11}},
             "series": [
                 {
-                    "name": "数据点", "type": "scatter",
+                    "name": "数据点",
+                    "type": "scatter",
                     "data": list(zip(df[col_x].round(2).tolist(), df[col_y].round(2).tolist())),
                     "itemStyle": {"color": BLUE, "opacity": 0.6},
                     "symbolSize": 6,
                 },
                 {
-                    "name": f"趋势线 r={corr:.3f}", "type": "line",
-                    "data": [[round(x_min, 2), round(slope_c * x_min + intercept_c, 2)],
-                             [round(x_max, 2), round(slope_c * x_max + intercept_c, 2)]],
+                    "name": f"趋势线 r={corr:.3f}",
+                    "type": "line",
+                    "data": [
+                        [round(x_min, 2), round(slope_c * x_min + intercept_c, 2)],
+                        [round(x_max, 2), round(slope_c * x_max + intercept_c, 2)],
+                    ],
                     "lineStyle": {"color": PINK, "type": "dashed", "width": 2},
                     "symbol": "none",
                 },

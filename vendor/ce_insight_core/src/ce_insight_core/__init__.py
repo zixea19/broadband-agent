@@ -6,28 +6,28 @@
 公共 API 见下方 `__all__`。
 """
 
+from ce_insight_core.sandbox import NL2CodeError, run_nl2code
+from ce_insight_core.services.day_schema_manager import (
+    get_all_day_fields,
+    get_full_day_schema,
+    get_pruned_day_schema,
+    get_pruned_schema,
+)
+from ce_insight_core.services.insight_runner import (
+    INSIGHT_MAP,
+    list_insight_types,
+    run_insight,
+)
+from ce_insight_core.services.minute_schema_manager import (
+    get_all_minute_fields,
+    get_minute_fields_for_dimension,
+    get_minute_schema,
+)
+from ce_insight_core.services.query_fixer import fix_query_config
 from ce_insight_core.services.subject_service import (
     query_subject_pandas,
     summarize_dataframe,
 )
-from ce_insight_core.services.query_fixer import fix_query_config
-from ce_insight_core.services.insight_runner import (
-    run_insight,
-    list_insight_types,
-    INSIGHT_MAP,
-)
-from ce_insight_core.services.day_schema_manager import (
-    get_full_day_schema,
-    get_pruned_schema,
-    get_pruned_day_schema,
-    get_all_day_fields,
-)
-from ce_insight_core.services.minute_schema_manager import (
-    get_minute_schema,
-    get_minute_fields_for_dimension,
-    get_all_minute_fields,
-)
-from ce_insight_core.sandbox import run_nl2code, NL2CodeError
 
 __all__ = [
     "query_subject_pandas",

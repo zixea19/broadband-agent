@@ -9,10 +9,11 @@
 """
 
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+from loguru import logger
 
 from core.observability.db import db
 
@@ -59,7 +60,7 @@ def _write_jsonl(
         with open(filepath, "a", encoding="utf-8") as f:
             f.write(line + "\n")
     except Exception:
-        print(f"[tracer] JSONL write failed: {event_type}", file=sys.stderr)
+        logger.warning(f"JSONL write failed: {event_type}")
 
 
 class Tracer:
@@ -84,13 +85,19 @@ class Tracer:
         """写入一条 trace 事件（SQLite + JSONL 双写）。"""
         try:
             if self.db_session_id is not None:
-                # SQLite traces 表存储 agent 信息到 payload 中
+                # agent 信息同时存入独立列（可索引）和 payload（兼容旧查询）
                 enriched = payload if isinstance(payload, dict) else {"data": payload}
                 enriched = {**enriched, "_agent": agent, "_is_leader": is_leader}
-                db.insert_trace(self.db_session_id, self.session_hash, event_type, enriched)
+                db.insert_trace(
+                    self.db_session_id,
+                    self.session_hash,
+                    event_type,
+                    enriched,
+                    agent_name=agent,
+                )
             _write_jsonl(event_type, self.session_hash, payload, agent=agent, is_leader=is_leader)
         except Exception:
-            print(f"[tracer] trace write failed: {event_type}", file=sys.stderr)
+            logger.warning(f"trace write failed: {event_type}")
 
     # ─── 用户请求/最终回复 ────────────────────────────────────────────
 
@@ -171,7 +178,7 @@ class Tracer:
         """
         payload: dict[str, Any] = {"raw_event": raw_event_type}
         if content is not None:
-            payload["content"] = str(content)[:2000]
+            payload["content"] = str(content)
         if tool_name:
             payload["tool_name"] = tool_name
         if tool_args is not None:
@@ -187,11 +194,28 @@ class Tracer:
 
     # ─── 工具调用 ────────────────────────────────────────────────────
 
-    def tool_invoke(self, skill_name: str, inputs: Any, *, agent: str = "", is_leader: bool = False) -> None:
-        self.trace("tool_invoke", {"skill": skill_name, "inputs": inputs}, agent=agent, is_leader=is_leader)
+    def tool_invoke(
+        self, skill_name: str, inputs: Any, *, agent: str = "", is_leader: bool = False
+    ) -> None:
+        self.trace(
+            "tool_invoke", {"skill": skill_name, "inputs": inputs}, agent=agent, is_leader=is_leader
+        )
 
-    def tool_result(self, skill_name: str, outputs: Any, latency_ms: int = 0, *, agent: str = "", is_leader: bool = False) -> None:
-        self.trace("tool_result", {"skill": skill_name, "outputs": outputs, "latency_ms": latency_ms}, agent=agent, is_leader=is_leader)
+    def tool_result(
+        self,
+        skill_name: str,
+        outputs: Any,
+        latency_ms: int = 0,
+        *,
+        agent: str = "",
+        is_leader: bool = False,
+    ) -> None:
+        self.trace(
+            "tool_result",
+            {"skill": skill_name, "outputs": outputs, "latency_ms": latency_ms},
+            agent=agent,
+            is_leader=is_leader,
+        )
 
     # ─── SubAgent 交互 ──────────────────────────────────────────────
 
@@ -205,7 +229,9 @@ class Tracer:
 
     # ─── 错误 / 未处理事件 ──────────────────────────────────────────
 
-    def unhandled_event(self, event_type: str, source_id: str = "", is_leader: bool = False) -> None:
+    def unhandled_event(
+        self, event_type: str, source_id: str = "", is_leader: bool = False
+    ) -> None:
         """记录未处理的事件类型（用于调试缺失事件）。"""
         self.trace(
             "unhandled_event",

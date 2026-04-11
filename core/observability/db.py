@@ -5,12 +5,12 @@
 
 import json
 import sqlite3
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from loguru import logger
+
 
 _DB_PATH = Path(__file__).resolve().parents[2] / "data" / "sessions.db"
 
@@ -52,10 +52,16 @@ CREATE TABLE IF NOT EXISTS traces (
     session_id INTEGER NOT NULL,
     session_hash TEXT NOT NULL DEFAULT '',
     event_type TEXT NOT NULL,
+    agent_name TEXT NOT NULL DEFAULT '',
     payload_json TEXT,
     created_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_traces_session ON traces(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_traces_agent ON traces(agent_name, event_type);
 """
 
 
@@ -80,14 +86,23 @@ class Database:
         try:
             conn = self._get_conn()
             conn.executescript(_SCHEMA_SQL)
-            # 兼容旧 schema：traces 表可能缺少 session_hash 列
-            try:
-                conn.execute("ALTER TABLE traces ADD COLUMN session_hash TEXT NOT NULL DEFAULT ''")
-                conn.commit()
-            except sqlite3.OperationalError:
-                pass  # 列已存在，忽略
+            # 兼容旧 schema：traces 表可能缺少新增列
+            for col_sql in (
+                "ALTER TABLE traces ADD COLUMN session_hash TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE traces ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''",
+            ):
+                try:
+                    conn.execute(col_sql)
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # 列已存在，忽略
             # 自检：验证表存在且可写
-            tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+            tables = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            ]
             conn.close()
             logger.info(f"SQLite schema 初始化完成: {self.db_path}, tables={tables}")
         except Exception:
@@ -95,61 +110,69 @@ class Database:
 
     # ---- sessions ----
     def create_session(self, session_hash: str, user_agent: str = "") -> Optional[int]:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             cur = conn.execute(
                 "INSERT INTO sessions (session_hash, created_at, user_agent) VALUES (?, ?, ?)",
                 (session_hash, _now_iso(), user_agent),
             )
             conn.commit()
             sid = cur.lastrowid
-            conn.close()
             logger.debug(f"create_session 成功: session_hash={session_hash[:8]}..., db_sid={sid}")
             return sid
         except Exception:
-            logger.exception(f"create_session 失败: session_hash={session_hash[:8]}..., db_path={self.db_path}")
+            logger.exception(
+                f"create_session 失败: session_hash={session_hash[:8]}..., db_path={self.db_path}"
+            )
             return None
+        finally:
+            conn.close()
 
     def end_session(self, session_hash: str, task_type: str = "") -> None:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             conn.execute(
                 "UPDATE sessions SET ended_at=?, task_type=? WHERE session_hash=?",
                 (_now_iso(), task_type, session_hash),
             )
             conn.commit()
-            conn.close()
         except Exception:
             logger.exception("end_session 失败")
+        finally:
+            conn.close()
 
     def get_session_id(self, session_hash: str) -> Optional[int]:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             row = conn.execute(
                 "SELECT id FROM sessions WHERE session_hash=?", (session_hash,)
             ).fetchone()
-            conn.close()
             return row["id"] if row else None
         except Exception:
             logger.exception("get_session_id 失败")
             return None
+        finally:
+            conn.close()
 
     # ---- messages ----
-    def insert_message(self, session_id: int, role: str, content: str, parent_msg_id: Optional[int] = None) -> Optional[int]:
+    def insert_message(
+        self, session_id: int, role: str, content: str, parent_msg_id: Optional[int] = None
+    ) -> Optional[int]:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             cur = conn.execute(
                 "INSERT INTO messages (session_id, role, content, created_at, parent_msg_id) VALUES (?, ?, ?, ?, ?)",
                 (session_id, role, content, _now_iso(), parent_msg_id),
             )
             conn.commit()
             mid = cur.lastrowid
-            conn.close()
             logger.debug(f"insert_message 成功: session_id={session_id}, role={role}, mid={mid}")
             return mid
         except Exception:
             logger.exception(f"insert_message 失败: session_id={session_id}, role={role}")
             return None
+        finally:
+            conn.close()
 
     # ---- tool_calls ----
     def insert_tool_call(
@@ -162,30 +185,48 @@ class Database:
         status: str = "ok",
         message_id: Optional[int] = None,
     ) -> None:
+        conn = self._get_conn()
         try:
-            conn = self._get_conn()
             conn.execute(
                 "INSERT INTO tool_calls (session_id, message_id, skill_name, inputs_json, outputs_json, latency_ms, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (session_id, message_id, skill_name, inputs_json, outputs_json, latency_ms, status, _now_iso()),
+                (
+                    session_id,
+                    message_id,
+                    skill_name,
+                    inputs_json,
+                    outputs_json,
+                    latency_ms,
+                    status,
+                    _now_iso(),
+                ),
             )
             conn.commit()
-            conn.close()
         except Exception:
             logger.exception("insert_tool_call 失败")
+        finally:
+            conn.close()
 
     # ---- traces ----
-    def insert_trace(self, session_id: int, session_hash: str, event_type: str, payload: Any = None) -> None:
+    def insert_trace(
+        self,
+        session_id: int,
+        session_hash: str,
+        event_type: str,
+        payload: Any = None,
+        agent_name: str = "",
+    ) -> None:
+        conn = self._get_conn()
         try:
             payload_str = json.dumps(payload, ensure_ascii=False, default=str) if payload else "{}"
-            conn = self._get_conn()
             conn.execute(
-                "INSERT INTO traces (session_id, session_hash, event_type, payload_json, created_at) VALUES (?, ?, ?, ?, ?)",
-                (session_id, session_hash, event_type, payload_str, _now_iso()),
+                "INSERT INTO traces (session_id, session_hash, event_type, agent_name, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, session_hash, event_type, agent_name, payload_str, _now_iso()),
             )
             conn.commit()
-            conn.close()
         except Exception:
             logger.exception("insert_trace 失败")
+        finally:
+            conn.close()
 
 
 # 全局单例

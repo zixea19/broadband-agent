@@ -4,13 +4,13 @@
 """
 
 # 马卡龙色系
-BLUE = "#7eb8da"       # 天蓝
-RED = "#f2918c"        # 珊瑚粉
-GREEN = "#8fd4b0"      # 薄荷绿
-ORANGE = "#f5c378"     # 杏黄
-PURPLE = "#b8a9e0"     # 薰衣草紫
-CYAN = "#7ecdc0"       # 青瓷绿
-PINK = "#e8a0bf"       # 樱花粉
+BLUE = "#7eb8da"  # 天蓝
+RED = "#f2918c"  # 珊瑚粉
+GREEN = "#8fd4b0"  # 薄荷绿
+ORANGE = "#f5c378"  # 杏黄
+PURPLE = "#b8a9e0"  # 薰衣草紫
+CYAN = "#7ecdc0"  # 青瓷绿
+PINK = "#e8a0bf"  # 樱花粉
 GRAY = "#e8e8e8"
 DARK_GRAY = "#b0b0b0"
 
@@ -29,7 +29,7 @@ PALETTE = [
 ]
 
 # 强调色（用于标注最值/异常/变点）
-HIGHLIGHT_RED = "#e76f6f"   # 柔和红
+HIGHLIGHT_RED = "#e76f6f"  # 柔和红
 HIGHLIGHT_GREEN = "#6bc78e"  # 柔和绿
 
 
@@ -48,7 +48,11 @@ def base_grid() -> dict:
 
 
 def base_title(text: str) -> dict:
-    return {"text": text, "left": "center", "textStyle": {"fontSize": 13, "color": "#4a4a4a", "fontWeight": 600}}
+    return {
+        "text": text,
+        "left": "center",
+        "textStyle": {"fontSize": 13, "color": "#4a4a4a", "fontWeight": 600},
+    }
 
 
 def rotated_axis_label(rotate: int = 30) -> dict:

@@ -4,9 +4,11 @@
 """
 
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from scipy import stats
+
 from ce_insight_core.services.insight_strategy.base_insight import InsightStrategy
 
 logger = logging.getLogger(__name__)
@@ -39,22 +41,23 @@ def _calculate_correlations(
             try:
                 corr, p_value = stats.pearsonr(df[c1], df[c2])
                 if abs(corr) >= threshold and (p_threshold is None or p_value < p_threshold):
-                    pairs.append({
-                        "变量1": c1,
-                        "变量2": c2,
-                        "相关系数": round(float(corr), 4),
-                        "相关强度": _get_correlation_strength(abs(corr)),
-                        "相关方向": "正相关" if corr > 0 else "负相关",
-                        "绝对值": round(abs(float(corr)), 4),
-                        "p_value": round(float(p_value), 6),
-                    })
+                    pairs.append(
+                        {
+                            "变量1": c1,
+                            "变量2": c2,
+                            "相关系数": round(float(corr), 4),
+                            "相关强度": _get_correlation_strength(abs(corr)),
+                            "相关方向": "正相关" if corr > 0 else "负相关",
+                            "绝对值": round(abs(float(corr)), 4),
+                            "p_value": round(float(p_value), 6),
+                        }
+                    )
             except Exception as e:
                 logger.warning("计算 %s 和 %s 相关性时出错: %s", c1, c2, e)
     return pairs
 
 
 class CrossMeasureCorrelationStrategy(InsightStrategy):
-
     def execute(self, **kwargs) -> None:
         value_columns: list[str] = kwargs["value_columns"]
 
@@ -155,17 +158,22 @@ class CrossMeasureCorrelationStrategy(InsightStrategy):
             self._description["removed_low_variance"] = low_variance_cols
 
         if is_fallback:
-            self._description["message"] = "未找到统计显著的相关性（p<0.05），显示所有相关系数供参考"
+            self._description["message"] = (
+                "未找到统计显著的相关性（p<0.05），显示所有相关系数供参考"
+            )
             self._description["is_fallback"] = True
 
         # 热力图：|r|<=0.3 的格子数值设为 None（灰色），着重显示强相关
         from ce_insight_core.services.insight_strategy.chart_style import (
-            truncate_labels, base_title, base_tooltip, GRAY, HIGHLIGHT_RED, BLUE,
+            base_title,
+            base_tooltip,
+            truncate_labels,
         )
+
         corr_matrix = df[valid_columns].corr()
         display_labels = truncate_labels(valid_columns, 12)
         data_colored = []  # |r|>0.3 的有效数据
-        data_gray = []     # |r|<=0.3 的灰色数据
+        data_gray = []  # |r|<=0.3 的灰色数据
         for i, c1 in enumerate(valid_columns):
             for j, c2 in enumerate(valid_columns):
                 r = round(float(corr_matrix.loc[c1, c2]), 3)
@@ -179,21 +187,30 @@ class CrossMeasureCorrelationStrategy(InsightStrategy):
             "title": base_title("多指标交叉相关矩阵"),
             "tooltip": base_tooltip("item"),
             "grid": {"left": "18%", "right": "10%", "bottom": "18%", "top": "12%"},
-            "xAxis": {"type": "category", "data": display_labels,
-                      "axisLabel": {"rotate": 45, "fontSize": 10}},
-            "yAxis": {"type": "category", "data": display_labels,
-                      "axisLabel": {"fontSize": 10}},
-            "visualMap": {"min": -1, "max": 1, "calculable": True,
-                          "inRange": {"color": ["#f2918c", "#ffffff", "#7eb8da"]},
-                          "textStyle": {"fontSize": 10}, "seriesIndex": 0},
+            "xAxis": {
+                "type": "category",
+                "data": display_labels,
+                "axisLabel": {"rotate": 45, "fontSize": 10},
+            },
+            "yAxis": {"type": "category", "data": display_labels, "axisLabel": {"fontSize": 10}},
+            "visualMap": {
+                "min": -1,
+                "max": 1,
+                "calculable": True,
+                "inRange": {"color": ["#f2918c", "#ffffff", "#7eb8da"]},
+                "textStyle": {"fontSize": 10},
+                "seriesIndex": 0,
+            },
             "series": [
                 {
-                    "name": "|r|>0.3", "type": "heatmap",
+                    "name": "|r|>0.3",
+                    "type": "heatmap",
                     "data": data_colored,
                     "label": {"show": True, "fontSize": 10},
                 },
                 {
-                    "name": "|r|≤0.3", "type": "heatmap",
+                    "name": "|r|≤0.3",
+                    "type": "heatmap",
                     "data": data_gray,
                     "label": {"show": True, "fontSize": 9, "color": "#bfbfbf"},
                     "itemStyle": {"color": "#f5f5f5"},

@@ -8,8 +8,9 @@
 
 import logging
 import os
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def query_subject_from_single_table(
 
 # ==================== 真实文件查询 ====================
 
+
 def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
     """从 parquet 文件/文件夹或 csv 读取数据，按三元组做过滤 + 聚合。
 
@@ -82,9 +84,12 @@ def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
             except Exception:
                 # 兜底：逐文件读取再 concat，跳过类型不一致的问题
                 import glob as _glob
+
                 parquet_files = sorted(_glob.glob(os.path.join(path, "*.parquet")))
                 if not parquet_files:
-                    parquet_files = sorted(_glob.glob(os.path.join(path, "**/*.parquet"), recursive=True))
+                    parquet_files = sorted(
+                        _glob.glob(os.path.join(path, "**/*.parquet"), recursive=True)
+                    )
                 if parquet_files:
                     dfs = []
                     for f in parquet_files:
@@ -112,8 +117,12 @@ def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
     breakdown_name = breakdown.get("name", "portUuid")
     breakdown_type = breakdown.get("type", "UNORDERED")
     aggr_map = {
-        "AVG": "mean", "SUM": "sum", "COUNT": "count",
-        "MIN": "min", "MAX": "max", "MEAN": "mean",
+        "AVG": "mean",
+        "SUM": "sum",
+        "COUNT": "count",
+        "MIN": "min",
+        "MAX": "max",
+        "MEAN": "mean",
     }
 
     # 1. 应用维度过滤（IN 条件）
@@ -133,8 +142,9 @@ def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
     available_measures = [m for m in measure_names if m in df.columns]
     missing_measures = [m for m in measure_names if m not in df.columns]
     if missing_measures:
-        logger.warning("以下 measure 不在数据中: %s（可用列: %s）",
-                       missing_measures, list(df.columns)[:15])
+        logger.warning(
+            "以下 measure 不在数据中: %s（可用列: %s）", missing_measures, list(df.columns)[:15]
+        )
 
     if not available_measures:
         logger.warning("没有可用的 measure 列，返回原始数据前 50 行")
@@ -173,13 +183,16 @@ def _query_from_real_file(path: str, config: dict) -> list[pd.DataFrame]:
 
 # ==================== 分钟表字段集合 ====================
 
+
 def _build_minute_fields():
     """从 minute_schema_manager 动态获取所有分钟表字段"""
     try:
         from ce_insight_core.services.minute_schema_manager import get_all_minute_fields
+
         return get_all_minute_fields()
     except ImportError:
         return set()
+
 
 MINUTE_TABLE_FIELDS = _build_minute_fields()
 
@@ -187,72 +200,118 @@ MINUTE_TABLE_FIELDS = _build_minute_fields()
 MINUTE_FIELD_GENERATORS = {
     # 越限标记字段：大部分为 0，少量为 1
     "flag": [
-        "oltRxPowerHigh", "oltRxWeakLight", "bipHigh", "fecHigh",
-        "G10UpPlrHigh", "G1UpPlrHigh", "portUpPlrHigh",
-        "homeRamHigh", "homeCpuMaxHigh", "diagLossHigh",
-        "apRamHigh", "apCpuMaxHigh", "peakRxRateHigh",
-        "roamDelayHigh", "diagTimeDelayHigh",
+        "oltRxPowerHigh",
+        "oltRxWeakLight",
+        "bipHigh",
+        "fecHigh",
+        "G10UpPlrHigh",
+        "G1UpPlrHigh",
+        "portUpPlrHigh",
+        "homeRamHigh",
+        "homeCpuMaxHigh",
+        "diagLossHigh",
+        "apRamHigh",
+        "apCpuMaxHigh",
+        "peakRxRateHigh",
+        "roamDelayHigh",
+        "diagTimeDelayHigh",
     ],
     # 计数字段：大部分为 0，偶尔有值
     "sparse_count": [
-        "unclearedAlarmCount_A", "alarmCount", "unclearedAlarmCount_H",
-        "zeroNegotiationRxRateCnt", "zeroAchievableRateCnt",
-        "officePoorQualityCount", "gamePoorQualityCount",
-        "videoCallPoorQualityCount", "liveVideoPoorQualityCount",
-        "educationPoorQualityCount", "anchorVideoPoorQualityCount",
-        "pointVideoPoorQualityCount", "generalTcpPoorQualityCount",
-        "apExceHighCnt", "apWifiHighCnt", "apLanHighCnt", "apPonHighCnt",
-        "apLanCnt", "apWifiCnt", "apPonCnt",
+        "unclearedAlarmCount_A",
+        "alarmCount",
+        "unclearedAlarmCount_H",
+        "zeroNegotiationRxRateCnt",
+        "zeroAchievableRateCnt",
+        "officePoorQualityCount",
+        "gamePoorQualityCount",
+        "videoCallPoorQualityCount",
+        "liveVideoPoorQualityCount",
+        "educationPoorQualityCount",
+        "anchorVideoPoorQualityCount",
+        "pointVideoPoorQualityCount",
+        "generalTcpPoorQualityCount",
+        "apExceHighCnt",
+        "apWifiHighCnt",
+        "apLanHighCnt",
+        "apPonHighCnt",
+        "apLanCnt",
+        "apWifiCnt",
+        "apPonCnt",
     ],
     # 误码/错误数：较小的正整数
     "error_count": [
-        "ontDownstreamBipErrors", "ontRxFecErrors",
+        "ontDownstreamBipErrors",
+        "ontRxFecErrors",
     ],
     # 丢包率：0~0.01 范围
     "packet_loss": [
-        "G10UpPlr", "G1UpPlr", "portUpPlr",
+        "G10UpPlr",
+        "G1UpPlr",
+        "portUpPlr",
     ],
     # 数据包计数：大正整数
     "packet_count": [
-        "G10TxPacketCount", "G1TxPacketCount", "portTxPacketCount",
+        "G10TxPacketCount",
+        "G1TxPacketCount",
+        "portTxPacketCount",
     ],
     # 流量/速率：正值
     "traffic": [
-        "maxTxTraffic", "meanRxTraffic", "peakRxRate",
-        "avgAchievableRate", "avgNegotiationTxRate", "avgNegotiationRxRate",
+        "maxTxTraffic",
+        "meanRxTraffic",
+        "peakRxRate",
+        "avgAchievableRate",
+        "avgNegotiationTxRate",
+        "avgNegotiationRxRate",
     ],
     # 光功率 dBm：负值
     "power_dbm": [
-        "RxPower", "avgWifiSignal",
+        "RxPower",
+        "avgWifiSignal",
     ],
     # 利用率百分比 0~100
     "utilization": [
-        "homeRamMax", "homeCpuMax", "apRamMax", "apCpuMax",
+        "homeRamMax",
+        "homeCpuMax",
+        "apRamMax",
+        "apCpuMax",
     ],
     # 占比 0~1
     "ratio": [
-        "zeroNegotiationTxRatePercent", "zeroAchievableRatePercent",
-        "dBmPercent", "avgDownLossRate",
+        "zeroNegotiationTxRatePercent",
+        "zeroAchievableRatePercent",
+        "dBmPercent",
+        "avgDownLossRate",
     ],
     # 丢包率百分比 0~100
     "loss_percent": [
-        "maxDiagLossRate", "avgDiagLossRate",
+        "maxDiagLossRate",
+        "avgDiagLossRate",
     ],
     # 时延 ms
     "latency_ms": [
-        "maxDiagMaxTime", "avgDiagAvgTime", "minDiagMinTime",
+        "maxDiagMaxTime",
+        "avgDiagAvgTime",
+        "minDiagMinTime",
     ],
     # 干扰采集点数
     "interference_count": [
-        "midCnt", "highCnt", "lowCnt", "sumTotal",
+        "midCnt",
+        "highCnt",
+        "lowCnt",
+        "sumTotal",
     ],
     # 噪声/信噪比 dB
     "noise_snr": [
-        "avgNoise", "avgSnr",
+        "avgNoise",
+        "avgSnr",
     ],
     # 终端/设备数量
     "sta_count": [
-        "numSTA", "totalDevices", "numLanWiredDevices",
+        "numSTA",
+        "totalDevices",
+        "numLanWiredDevices",
     ],
     # 告警类型列表（字符串）
     "alarm_list": [
@@ -286,12 +345,16 @@ def _generate_minute_data(
         groups = filter_values[breakdown_name]
         n = len(groups) * 20  # 每组 20 条
         data[breakdown_name] = [g for g in groups for _ in range(20)]
-        data["time_id"] = pd.date_range("2025-01-15 08:00", periods=20, freq="5min").tolist() * len(groups)
+        data["time_id"] = pd.date_range("2025-01-15 08:00", periods=20, freq="5min").tolist() * len(
+            groups
+        )
     else:
         groups = _default_groups(breakdown_name, min(n, 10))
         per_group = n // len(groups)
         data[breakdown_name] = [g for g in groups for _ in range(per_group)]
-        data["time_id"] = pd.date_range("2025-01-15 08:00", periods=per_group, freq="5min").tolist() * len(groups)
+        data["time_id"] = pd.date_range(
+            "2025-01-15 08:00", periods=per_group, freq="5min"
+        ).tolist() * len(groups)
         n = len(data[breakdown_name])
 
     # 如果有设备过滤
@@ -356,6 +419,7 @@ def _generate_minute_values(rng: np.random.Generator, n: int, gen_type: str) -> 
 
 
 # ==================== 天表数据生成（原有逻辑） ====================
+
 
 def _extract_filter_values(dimensions) -> dict[str, list]:
     """从 dimensions 中提取 IN 条件的过滤值。对 None / 非列表结构做兜底。"""

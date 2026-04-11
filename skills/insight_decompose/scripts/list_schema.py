@@ -30,12 +30,17 @@ from typing import Any
 try:
     import ce_insight_core as cic
 except ImportError as exc:
-    print(json.dumps({
-        "status": "error",
-        "skill": "insight_decompose",
-        "op": "list_schema",
-        "error": f"ce_insight_core 未安装: {exc}",
-    }, ensure_ascii=True))
+    print(
+        json.dumps(
+            {
+                "status": "error",
+                "skill": "insight_decompose",
+                "op": "list_schema",
+                "error": f"ce_insight_core 未安装: {exc}",
+            },
+            ensure_ascii=True,
+        )
+    )
     sys.exit(1)
 
 
@@ -52,13 +57,14 @@ def _safe_parse_json(raw: str) -> dict:
             return json.loads(stripped)
         except json.JSONDecodeError:
             pass
-    repaired = re.sub(r'(?<=[{,])\s*([a-zA-Z_]\w*)\s*:', r' "\1":', raw)
+    repaired = re.sub(r"(?<=[{,])\s*([a-zA-Z_]\w*)\s*:", r' "\1":', raw)
     try:
         return json.loads(repaired)
     except json.JSONDecodeError:
         pass
     try:
         from json_repair import repair_json
+
         return json.loads(repair_json(raw, return_objects=False))
     except (ImportError, Exception):
         pass
@@ -97,24 +103,30 @@ def run(payload_json: str) -> str:
     except Exception as exc:
         return _err(f"获取 schema 失败: {type(exc).__name__}: {exc}")
 
-    return json.dumps({
-        "status": "ok",
-        "skill": "insight_decompose",
-        "op": "list_schema",
-        "table": table,
-        "focus_dimensions": focus,
-        "schema_markdown": schema_md,
-        "all_fields": all_fields,
-    }, ensure_ascii=True)
+    return json.dumps(
+        {
+            "status": "ok",
+            "skill": "insight_decompose",
+            "op": "list_schema",
+            "table": table,
+            "focus_dimensions": focus,
+            "schema_markdown": schema_md,
+            "all_fields": all_fields,
+        },
+        ensure_ascii=True,
+    )
 
 
 def _err(msg: str) -> str:
-    return json.dumps({
-        "status": "error",
-        "skill": "insight_decompose",
-        "op": "list_schema",
-        "error": msg,
-    }, ensure_ascii=True)
+    return json.dumps(
+        {
+            "status": "error",
+            "skill": "insight_decompose",
+            "op": "list_schema",
+            "error": msg,
+        },
+        ensure_ascii=True,
+    )
 
 
 if __name__ == "__main__":

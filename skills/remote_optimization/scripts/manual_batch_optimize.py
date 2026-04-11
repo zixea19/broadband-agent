@@ -49,7 +49,6 @@ for _p in (str(_PROJECT_ROOT), str(_FAE_POC_DIR)):
 # NCELogin 本体延后到 execute() 里用 bare 导入 try/except 保护。
 from fae_poc import DEFAULT_CONFIG_PATH, require_config  # noqa: E402
 
-
 # ─── 参数 schema ───────────────────────────────────────────────────────
 _ALLOWED_STRATEGIES = {"immediate", "idle", "scheduled"}
 _ALLOWED_METHODS = {1, 2, 3, 4}
@@ -96,12 +95,8 @@ def _normalize_params(raw: Dict[str, Any]) -> Dict[str, Any]:
     """把外部传入的 dict 校验 + 补默认值，产出标准化参数。"""
     strategy = raw.get("strategy", "immediate") or "immediate"
     if strategy not in _ALLOWED_STRATEGIES:
-        raise ValueError(
-            f"strategy 非法: {strategy!r}, 允许值: {sorted(_ALLOWED_STRATEGIES)}"
-        )
-    rectification_method = _normalize_rectification_method(
-        raw.get("rectification_method")
-    )
+        raise ValueError(f"strategy 非法: {strategy!r}, 允许值: {sorted(_ALLOWED_STRATEGIES)}")
+    rectification_method = _normalize_rectification_method(raw.get("rectification_method"))
     operation_time = raw.get("operation_time") or _DEFAULT_OPERATION_TIME
     config_path = raw.get("config")
 
@@ -267,10 +262,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         "--config",
         "-c",
         default=str(DEFAULT_CONFIG_PATH),
-        help=(
-            "config.ini 绝对路径，默认指向项目根 fae_poc/config.ini "
-            f"({DEFAULT_CONFIG_PATH})"
-        ),
+        help=(f"config.ini 绝对路径，默认指向项目根 fae_poc/config.ini ({DEFAULT_CONFIG_PATH})"),
     )
     return parser.parse_args(argv)
 

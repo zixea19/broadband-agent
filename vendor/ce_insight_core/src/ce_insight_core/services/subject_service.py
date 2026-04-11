@@ -4,12 +4,14 @@
 """
 
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 
 # --- 外网/内网切换点：改这两行即可 ---
 from ce_insight_core.cei_query_mock.api import query_subject_from_single_table
 from ce_insight_core.cei_query_mock.query.models import InsightSubspaceApiModel
+
 # 内网部署时换为：
 # from cei_query.api import query_subject_from_single_table
 # from cei_query.query.models import InsightSubspace as InsightSubspaceApiModel
@@ -36,9 +38,7 @@ def query_subject_pandas(
     # 将 dict 转换为 InsightSubspace 对象，与内网接口保持一致
     converted_input = InsightSubspaceApiModel.model_validate(query_config)
 
-    result = query_subject_from_single_table(
-        data_path, converted_input, use_pandas=True
-    )
+    result = query_subject_from_single_table(data_path, converted_input, use_pandas=True)
 
     if auto_convert_timestamp:
         result = [_auto_convert_timestamps(df) for df in result]
@@ -67,14 +67,14 @@ def summarize_dataframe(df: pd.DataFrame, description: str, max_rows: int = 5) -
     summary_parts.append(f"- 列名：{list(df.columns)}")
 
     # 数值列统计
-    numeric_cols = df.select_dtypes(include='number').columns
+    numeric_cols = df.select_dtypes(include="number").columns
     for col in numeric_cols[:5]:
         summary_parts.append(
             f"- {col}：最大={df[col].max():.3f}, 最小={df[col].min():.3f}, 均值={df[col].mean():.3f}"
         )
 
     # 独特值统计（非数值列）
-    str_cols = df.select_dtypes(exclude='number').columns
+    str_cols = df.select_dtypes(exclude="number").columns
     for col in str_cols[:3]:
         # 跳过含 dict/list 等 unhashable 的列（NL2Code 结果经常有）
         try:
@@ -94,7 +94,7 @@ def summarize_dataframe(df: pd.DataFrame, description: str, max_rows: int = 5) -
     try:
         summary_parts.append(df.head(max_rows).to_string(index=False))
     except Exception:
-        summary_parts.append(f"（无法格式化，含嵌套结构）")
+        summary_parts.append("（无法格式化，含嵌套结构）")
 
     return "\n".join(summary_parts)
 
@@ -102,6 +102,7 @@ def summarize_dataframe(df: pd.DataFrame, description: str, max_rows: int = 5) -
 def _clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """去掉内网查询返回的聚合后缀（_avg、_sum、_min、_max、_count）"""
     import re
+
     rename_map = {}
     for col in df.columns:
         cleaned = re.sub(r"_(avg|sum|min|max|count)$", "", col, flags=re.IGNORECASE)
