@@ -39,16 +39,11 @@ class SessionManager:
         if session_hash in self._sessions:
             return self._sessions[session_hash]
 
-        # 创建 DB 记录（失败时重试一次，仍失败则回退查询已有记录）
+        # 创建 DB 记录（失败时重试一次）
         db_sid = db.create_session(session_hash)
         if db_sid is None:
             logger.warning(f"create_session 首次失败，重试: {session_hash[:8]}...")
             db_sid = db.create_session(session_hash)
-        if db_sid is None:
-            # 最终兜底：可能 DB 可读但写入异常，尝试查询已有记录
-            db_sid = db.get_session_id(session_hash)
-            if db_sid:
-                logger.info(f"create_session 回退到已有记录: {session_hash[:8]}..., db_sid={db_sid}")
         if db_sid is None:
             logger.error(f"create_session 最终失败: {session_hash[:8]}... — DB traces 将被跳过")
 

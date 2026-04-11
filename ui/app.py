@@ -173,34 +173,6 @@ async def chat_handler(
             source_id = _extract_source_id(event, is_leader)
             agent = _agent_id(source_id, is_leader)
 
-            # ─── 全量事件归档 ───────────────────────────────────
-            # 无论下游处理分支如何，每个 agno 流事件都原样记录到
-            # JSONL + SQLite，确保可完整重建 agent 交互轨迹。
-            # 特化 trace（tool_invoke / tool_result 等）在各处理
-            # 分支中仍然保留，提供结构化查询视图。
-            if raw_event_type:
-                _evt_tool = getattr(event, "tool", None)
-                _evt_tool_name = ""
-                _evt_tool_args = None
-                _evt_tool_result = None
-                if _evt_tool is not None:
-                    _evt_tool_name = (
-                        getattr(_evt_tool, "tool_name", "") or getattr(_evt_tool, "function_name", "")
-                    )
-                    _evt_tool_args = (
-                        getattr(_evt_tool, "tool_args", None) or getattr(_evt_tool, "function_args", None)
-                    )
-                    _evt_tool_result = getattr(_evt_tool, "result", None)
-                ctx.tracer.stream_event(
-                    raw_event_type,
-                    agent=agent,
-                    is_leader=is_leader,
-                    content=getattr(event, "content", None),
-                    tool_name=_evt_tool_name,
-                    tool_args=_evt_tool_args,
-                    tool_result=_evt_tool_result,
-                )
-
             # ---- Member 徽章(每个 member 一轮只渲染一次) ----
             if source_id and not is_leader:
                 current_member = source_id
@@ -367,6 +339,13 @@ async def chat_handler(
                     final = getattr(event, "content", None)
                     if final and str(final) != full_content:
                         full_content = str(final)
+                    # 记录 leader 完成 (带最终内容)
+                    ctx.tracer.stream_event(
+                        raw_event_type,
+                        agent=agent,
+                        is_leader=True,
+                        content=str(final) if final else "",
+                    )
                 else:
                     # SubAgent 运行完成 — 将 member content buffer 固化到 history
                     if source_id and source_id in member_content_buffers:
@@ -395,6 +374,13 @@ async def chat_handler(
                 error_content = getattr(event, "content", "") or getattr(event, "error", "")
                 tool_name = getattr(tool, "tool_name", "unknown") if tool else "unknown"
                 _error_str = str(error_content)
+                ctx.tracer.stream_event(
+                    raw_event_type,
+                    agent=agent,
+                    is_leader=is_leader,
+                    tool_name=tool_name,
+                    content=_error_str,
+                )
                 # 错误事件也写入 tool_calls 表，status=error（完整存储）
                 if ctx.db_session_id:
                     db.insert_tool_call(
@@ -416,9 +402,16 @@ async def chat_handler(
                 ]
                 yield history
 
-            # ---- 未识别事件 — 仅记录 debug 日志（全量归档已在循环入口完成） ----
+            # ---- 未识别事件 — 全量记录到 trace 供调试 ----
             else:
                 if raw_event_type:
+                    content_val = getattr(event, "content", None)
+                    ctx.tracer.stream_event(
+                        raw_event_type,
+                        agent=agent,
+                        is_leader=is_leader,
+                        content=content_val,
+                    )
                     logger.debug(
                         f"未处理事件: {raw_event_type} (agent={agent}, leader={is_leader})"
                     )
