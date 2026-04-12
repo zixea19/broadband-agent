@@ -103,7 +103,8 @@ async def adapt(
 
     thinking_start: Optional[float] = None
     thinking_end: Optional[float] = None
-    skill_start_times: dict[str, float] = {}
+    skill_start_times: dict[str, list] = {}
+    skill_start_args: dict[str, list] = {}   # key -> [call_args, ...]
     active_step: Optional[StepAggregate] = None
     insight_acc: Optional[InsightAccumulator] = None  # 仅 insight step 期间非 None
 
@@ -121,7 +122,10 @@ async def adapt(
                         thinking_start = time.monotonic()
                     thinking_end = time.monotonic()
                     agg.thinking_content += delta
-                    yield format_sse("thinking", {"delta": delta}), agg
+                    payload: dict = {"delta": delta}
+                    if active_step:
+                        payload["stepId"] = active_step.step_id
+                    yield format_sse("thinking", payload), agg
                 continue
 
             if etype == "RunContent":
@@ -131,7 +135,10 @@ async def adapt(
                         thinking_start = time.monotonic()
                     thinking_end = time.monotonic()
                     agg.thinking_content += r_delta
-                    yield format_sse("thinking", {"delta": r_delta}), agg
+                    payload = {"delta": r_delta}
+                    if active_step:
+                        payload["stepId"] = active_step.step_id
+                    yield format_sse("thinking", payload), agg
 
             # ── text（仅 leader）─────────────────────────────────────────
             if etype == "RunContent" and leader:
@@ -161,10 +168,15 @@ async def adapt(
                 args = _tool_args(event)
                 skill_name = args.get("skill_name", "unknown")
                 agent_id = getattr(event, "agent_id", "") or ""
-                # 同一 skill 可能被多次调用，用 list 堆叠起始时间
                 key = f"{agent_id}:{skill_name}"
                 skill_start_times.setdefault(key, [])
-                skill_start_times[key].append(time.monotonic())  # type: ignore[union-attr]
+                skill_start_times[key].append(time.monotonic())
+                # 缓存调用参数，供 ToolCallCompleted 时发给前端
+                skill_start_args.setdefault(key, [])
+                skill_start_args[key].append({
+                    "scriptPath": args.get("script_path", ""),
+                    "callArgs": args.get("args", []),
+                })
                 continue
 
             # ── sub_step 完成 ─────────────────────────────────────────────
@@ -179,9 +191,15 @@ async def adapt(
                     skill_start_times.pop(key, None)
                 duration_ms = int((time.monotonic() - t0) * 1000) if t0 else 0
 
+                # 取出对应的调用参数
+                args_list = skill_start_args.get(key, [])
+                call_info = args_list.pop(0) if args_list else {}
+                if not args_list:
+                    skill_start_args.pop(key, None)
+
                 tool = getattr(event, "tool", None)
                 result_raw = getattr(tool, "result", None) or ""
-                result_str = _extract_result(result_raw)
+                stdout, stderr = _extract_stdout_stderr(result_raw)
 
                 step_id = active_step.step_id if active_step else agent_id
                 sub_step_id = f"{step_id}_{skill_name}"
@@ -190,7 +208,10 @@ async def adapt(
                 sub = {
                     "subStepId": sub_step_id,
                     "name": skill_name,
-                    "result": result_str,
+                    "scriptPath": call_info.get("scriptPath", ""),
+                    "callArgs": call_info.get("callArgs", []),
+                    "stdout": stdout[:500],
+                    "stderr": stderr[:500],
                     "completedAt": completed_at,
                     "durationMs": duration_ms,
                 }
@@ -237,7 +258,12 @@ async def adapt(
 
             # ── error ─────────────────────────────────────────────────────
             if etype in ("RunError", "Error"):
-                msg = getattr(event, "content", "") or str(event)
+                # agno RunErrorEvent 的真实错误可能在 additional_data 或 error_type 里
+                content = getattr(event, "content", "") or ""
+                error_type = getattr(event, "error_type", "") or ""
+                additional_data = getattr(event, "additional_data", None)
+                msg = content or error_type or (str(additional_data) if additional_data else "") or str(event)
+                logger.error(f"Agent RunError: type={error_type} content={content!r} additional_data={additional_data} full={event}")
                 agg.status = "error"
                 agg.error_message = msg
                 yield format_sse("error", {"message": msg}), agg
@@ -263,22 +289,20 @@ async def adapt(
 
 # ─── 辅助 ────────────────────────────────────────────────────────────────────
 
-def _extract_result(raw: Any, max_len: int = 200) -> str:
-    """从 skill tool result 中提取可展示的摘要。"""
+def _extract_stdout_stderr(raw: Any) -> tuple[str, str]:
+    """从 skill tool result 中分别提取 stdout 和 stderr。"""
     import json as _json
+    parsed: dict = {}
     if isinstance(raw, dict):
-        stdout = raw.get("stdout", "")
-        return str(stdout)[:max_len] if stdout else str(raw)[:max_len]
-    if isinstance(raw, str):
+        parsed = raw
+    elif isinstance(raw, str):
         try:
             parsed = _json.loads(raw)
-            stdout = parsed.get("stdout", "")
-            if stdout:
-                return str(stdout)[:max_len]
         except Exception:
-            pass
-        return raw[:max_len]
-    return str(raw)[:max_len]
+            return raw, ""
+    stdout = str(parsed.get("stdout", "")).strip()
+    stderr = str(parsed.get("stderr", "")).strip()
+    return stdout, stderr
 
 
 def _parse_stdout(raw: Any) -> Any:
