@@ -227,6 +227,8 @@ def run(payload_json: str) -> str:
         "group_column_used": group_column,
         "phase_id": payload.get("phase_id"),
         "step_id": payload.get("step_id"),
+        "phase_name": payload.get("phase_name"),
+        "step_name": payload.get("step_name"),
     }
     return json.dumps(output, ensure_ascii=False, default=_json_default)
 

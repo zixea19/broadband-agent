@@ -371,7 +371,7 @@ Report (1 次)
 **完整的带 IN 过滤的 run_insight 调用示例**：
 ```
 get_skill_script("insight_query", "run_insight.py", execute=True, args=[
-  '{"insight_type":"OutstandingMin","query_config":{"dimensions":[[{"dimension":{"name":"portUuid","type":"DISCRETE"},"conditions":[{"oper":"IN","values":["uuid-a","uuid-b","uuid-c"]}]}]],"breakdown":{"name":"portUuid","type":"UNORDERED"},"measures":[{"name":"ODN_score","aggr":"AVG"},{"name":"Wifi_score","aggr":"AVG"}]},"table_level":"day","phase_id":2,"step_id":1}'
+  '{"insight_type":"OutstandingMin","query_config":{"dimensions":[[{"dimension":{"name":"portUuid","type":"DISCRETE"},"conditions":[{"oper":"IN","values":["uuid-a","uuid-b","uuid-c"]}]}]],"breakdown":{"name":"portUuid","type":"UNORDERED"},"measures":[{"name":"ODN_score","aggr":"AVG"},{"name":"Wifi_score","aggr":"AVG"}]},"table_level":"day","phase_id":2,"step_id":1,"phase_name":"L2-分维度归因","step_name":"ODN/WiFi 各维度对均值的贡献"}'
 ])
 ```
 
@@ -394,7 +394,7 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
 2. **`step_result`** — 每个 Step 脚本调用完成后输出，**必须包含 `phase_id` 和 `step_id`**：
    ```
    <!--event:step_result-->
-   {"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}, "status": "ok"}
+   {"phase_id": 1, "step_id": 1, "phase_name": "L1-定位低分PON口", "step_name": "找出 CEI_score 最低的 PON 口", "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}, "status": "ok"}
    ```
 3. **`reflect`** — 每个 Phase 所有 Step 执行完后输出
 
@@ -423,7 +423,11 @@ get_skill_script(
 ```
 payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step 的 `insight_types[0]`。
 `value_columns` / `group_column` 可省略（会从三元组推导）。
-🔴 **必须**在 payload 中携带 `"phase_id"` 和 `"step_id"`，脚本会原样透传到 stdout JSON，供前端关联 step_result 事件。
+🔴 **必须**在 payload 中携带以下 4 个字段，脚本会原样透传到 stdout JSON，供前端关联 step_result 事件：
+- `"phase_id"`：当前 Phase 编号（来自 MacroPlan）
+- `"step_id"`：当前 Step 编号
+- `"phase_name"`：当前 Phase 名称（来自 MacroPlan `phases[i].name`，如 `"L1-定位低分PON口"`）
+- `"step_name"`：当前 Step 目的（来自 Step 数组的 `rationale`，如 `"找出 CEI_score 最低的 PON 口"`）
 
 **NL2Code 步骤**（当现有 12 种函数无法满足时）：
 1. **你自己**按 `references/nl2code_spec.md` 写一段 pandas 代码（不要再委托给其他 LLM）
