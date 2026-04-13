@@ -88,6 +88,7 @@ async def send_message(conv_id: str, body: SendMessageRequest):
                             "stepId": s.step_id,
                             "title": s.title,
                             "subSteps": s.sub_steps,
+                            "textContent": s.text_content,
                         }
                         for s in agg.steps
                     ]
@@ -98,13 +99,11 @@ async def send_message(conv_id: str, body: SendMessageRequest):
                         thinking_duration_sec=agg.thinking_duration_sec,
                         steps=steps_data,
                         render_blocks=agg.render_blocks,
-                        insight_events=agg.insight_events,
                         status=agg.status,
                     )
                     _api_log.bind(conv_id=conv_id, msg_id=agg.message_id).info(
                         f"assistant 消息已落库 content_len={len(agg.content)} "
-                        f"steps={len(steps_data)} insight_events={len(agg.insight_events)} "
-                        f"renders={len(agg.render_blocks)}"
+                        f"steps={len(steps_data)} renders={len(agg.render_blocks)}"
                     )
                 except Exception:
                     _api_log.exception("assistant 消息落库失败")

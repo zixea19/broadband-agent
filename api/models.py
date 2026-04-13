@@ -59,6 +59,9 @@ class Step(BaseModel):
     stepId: str
     title: str
     subSteps: List[SubStep] = []
+    # SubAgent 本身输出的 assistant content（流式到达时以 text(stepId) 事件推送；
+    # 历史回放时一次性随 Step 下发，供前端补绘阶段文本）
+    textContent: str = ""
 
 
 # ─── 右侧渲染块 ───────────────────────────────────────────────────────────────
@@ -97,13 +100,6 @@ RenderBlock = Union[InsightRenderBlock, ImageRenderBlock]
 
 # ─── 消息 ─────────────────────────────────────────────────────────────────────
 
-class InsightEvent(BaseModel):
-    """InsightAgent 阶段事件回放条目。"""
-
-    event: str  # insight_plan / insight_decompose / insight_phase_start / insight_step_result / insight_reflect / insight_summary
-    data: dict
-
-
 class Message(BaseModel):
     id: str
     conversationId: str
@@ -113,7 +109,6 @@ class Message(BaseModel):
     thinkingDurationSec: Optional[int] = None
     steps: List[Step] = []
     renderBlocks: List[RenderBlock] = []
-    insightEvents: List[InsightEvent] = []
     createdAt: str
 
 

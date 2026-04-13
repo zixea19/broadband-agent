@@ -19,7 +19,6 @@ from loguru import logger
 from api.models import (
     Conversation,
     ImageRenderBlock,
-    InsightEvent,
     InsightRenderBlock,
     Message,
     RenderBlock,
@@ -63,22 +62,11 @@ async def init_db() -> None:
                 thinking_duration_sec INTEGER DEFAULT 0,
                 steps                 TEXT DEFAULT '[]',
                 render_blocks         TEXT DEFAULT '[]',
-                insight_events        TEXT DEFAULT '[]',
                 created_at            TEXT NOT NULL,
                 status                TEXT DEFAULT 'done',
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             );
         """)
-        # 兼容旧库：已存在 messages 表但缺 insight_events 列时 ALTER
-        try:
-            await conn.execute(
-                "ALTER TABLE messages ADD COLUMN insight_events TEXT DEFAULT '[]'"
-            )
-            await conn.commit()
-            logger.info("messages 表已补齐 insight_events 列")
-        except Exception:
-            # 列已存在，忽略
-            pass
         await conn.commit()
     logger.info(f"API DB 初始化完成: {_DB_PATH}")
 
@@ -186,9 +174,9 @@ async def insert_user_message(conv_id: str, content: str) -> Message:
     async with _get_conn() as conn:
         await conn.execute(
             "INSERT INTO messages (id, conversation_id, role, content, thinking_content, "
-            "thinking_duration_sec, steps, render_blocks, insight_events, created_at, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (msg.id, conv_id, "user", content, "", 0, "[]", "[]", "[]", now, "done"),
+            "thinking_duration_sec, steps, render_blocks, created_at, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (msg.id, conv_id, "user", content, "", 0, "[]", "[]", now, "done"),
         )
         await _update_conversation_meta(conn, conv_id, content)
         await conn.commit()
@@ -202,23 +190,21 @@ async def insert_assistant_message(
     thinking_duration_sec: int = 0,
     steps: list = None,
     render_blocks: list = None,
-    insight_events: list = None,
     status: str = "done",
 ) -> Message:
     now = _now_iso()
     msg_id = str(uuid.uuid4())
     steps_json = json.dumps(steps or [], ensure_ascii=False)
     render_json = json.dumps(render_blocks or [], ensure_ascii=False)
-    insight_json = json.dumps(insight_events or [], ensure_ascii=False)
     preview = content[:100] if content else ""
 
     async with _get_conn() as conn:
         await conn.execute(
             "INSERT INTO messages (id, conversation_id, role, content, thinking_content, "
-            "thinking_duration_sec, steps, render_blocks, insight_events, created_at, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "thinking_duration_sec, steps, render_blocks, created_at, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (msg_id, conv_id, "assistant", content, thinking_content,
-             thinking_duration_sec, steps_json, render_json, insight_json, now, status),
+             thinking_duration_sec, steps_json, render_json, now, status),
         )
         await _update_conversation_meta(conn, conv_id, preview)
         await conn.commit()
@@ -232,7 +218,6 @@ async def insert_assistant_message(
         thinkingDurationSec=thinking_duration_sec or None,
         steps=[],
         renderBlocks=[],
-        insightEvents=[],
         createdAt=now,
     )
 
@@ -253,12 +238,6 @@ def _row_to_conversation(row: aiosqlite.Row) -> Conversation:
 def _row_to_message(row: aiosqlite.Row) -> Message:
     steps_raw = json.loads(row["steps"] or "[]")
     render_raw = json.loads(row["render_blocks"] or "[]")
-    # 兼容老数据：insight_events 列可能缺失（ALTER 之前的行），统一按空数组处理
-    try:
-        insight_raw_str = row["insight_events"]
-    except (IndexError, KeyError):
-        insight_raw_str = "[]"
-    insight_raw = json.loads(insight_raw_str or "[]")
 
     steps = [Step(**s) for s in steps_raw]
     render_blocks: List[RenderBlock] = []
@@ -267,7 +246,6 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
             render_blocks.append(InsightRenderBlock(**rb))
         elif rb.get("renderType") == "image":
             render_blocks.append(ImageRenderBlock(**rb))
-    insight_events = [InsightEvent(**e) for e in insight_raw if isinstance(e, dict)]
 
     return Message(
         id=row["id"],
@@ -278,6 +256,5 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
         thinkingDurationSec=row["thinking_duration_sec"] or None,
         steps=steps,
         renderBlocks=render_blocks,
-        insightEvents=insight_events,
         createdAt=row["created_at"],
     )
