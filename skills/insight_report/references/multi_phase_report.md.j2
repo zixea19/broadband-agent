@@ -41,7 +41,7 @@
 #### 执行步骤
 
 {% for step in phase.steps %}
-**Step {{ step.step_id }} · {{ step.insight_type }}** (显著性: {{ "%.2f" | format(step.significance | default(0)) }})
+**Step {{ step.step_id }} · {{ step.insight_type }}** (显著性: {{ "%.2f" | format(step.significance | default(0) | float) }})
 
 {% if step.description %}
 {% if step.description is mapping %}
