@@ -41,6 +41,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Windows 兼容：保留默认编码（Linux/Mac 是 UTF-8，Windows 是 GBK），
+# 遇到不可编码字符（如 emoji）替换为 ? 而不是抛 UnicodeEncodeError 崩溃
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 try:
     import ce_insight_core as cic
 except ImportError as exc:
@@ -155,22 +160,25 @@ def run(payload_json: str) -> str:
 
     data_path = payload.get("data_path") or _resolve_data_path(table_level)
 
-    # 从三元组推导默认的 value_columns / group_column
-    default_value_cols = [m.get("name") for m in query_config.get("measures", []) if m.get("name")]
-    default_group_col = query_config.get("breakdown", {}).get("name", "")
-
-    value_columns = payload.get("value_columns") or default_value_cols
-    group_column = payload.get("group_column") or default_group_col
-
-    if not value_columns:
-        return _err("无法从 payload 或 query_config.measures 推导 value_columns")
-
-    # 1. 修复 + 查询
+    # 1. 修复三元组（query_fixer 可能替换字段名 / breakdown 名 / measures 名）
     try:
         fixed_config, fix_warnings = cic.fix_query_config(query_config, table_level=table_level)
     except Exception as exc:
         return _err(f"fix_query_config 失败: {type(exc).__name__}: {exc}")
 
+    # 2. 从**修复后**的 config 推导默认的 value_columns / group_column
+    #    （用 fixed_config 而非 query_config，确保 query_fixer 的字段替换被同步，
+    #    避免后续 NEEDS_GROUP 检查时拿到原始字段名而 df 列名是修复后的，导致误报）
+    default_value_cols = [m.get("name") for m in fixed_config.get("measures", []) if m.get("name")]
+    default_group_col = fixed_config.get("breakdown", {}).get("name", "")
+
+    value_columns = payload.get("value_columns") or default_value_cols
+    group_column = payload.get("group_column") or default_group_col
+
+    if not value_columns:
+        return _err("无法从 payload 或 fixed_config.measures 推导 value_columns")
+
+    # 3. 查询
     try:
         dfs = cic.query_subject_pandas(fixed_config, data_path)
     except Exception as exc:
@@ -181,8 +189,8 @@ def run(payload_json: str) -> str:
 
     df = dfs[0]
 
-    # 列名兜底：修复后的字段名可能与 LLM 传入的略有差异（如去掉聚合后缀），
-    # run_insight 内部会做列名校验，这里只补一层模糊匹配：若严格匹配失败，尝试 startswith。
+    # 4. 列名兜底：修复后的字段名可能与 fixed_config 里的还有细微差异（如聚合后缀），
+    #    做最后一层模糊匹配（startswith 前缀匹配）
     value_columns = _resolve_columns(df, value_columns)
 
     # 2. 执行洞察
