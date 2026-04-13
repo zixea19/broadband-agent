@@ -94,12 +94,35 @@ async def adapt(
     conv_id: str,
     raw_stream: AsyncGenerator[Any, None],
 ) -> AsyncGenerator[tuple[str, MessageAggregate], None]:
-    """消费 agno 原始事件流，yield (SSE字符串, 当前聚合状态) 元组。"""
+    """消费 agno 原始事件流，yield (SSE字符串, 当前聚合状态) 元组。
 
+    外层壳：负责创建 MessageAggregate 并注入 msg_id 日志上下文；
+    主循环委派给 `_adapt_body`，便于用 `with contextualize` 正确包裹。
+    """
     agg = MessageAggregate(
         message_id=str(uuid.uuid4()),
         conversation_id=conv_id,
     )
+    api_log = logger.bind(channel="api")
+    with logger.contextualize(msg_id=agg.message_id):
+        api_log.info(f"adapt() 启动 msg_id={agg.message_id}")
+        try:
+            async for item in _adapt_body(conv_id, raw_stream, agg):
+                yield item
+        finally:
+            api_log.info(
+                f"adapt() 结束 status={agg.status} "
+                f"content_len={len(agg.content)} thinking_len={len(agg.thinking_content)} "
+                f"steps={len(agg.steps)} renders={len(agg.render_blocks)}"
+            )
+
+
+async def _adapt_body(
+    conv_id: str,
+    raw_stream: AsyncGenerator[Any, None],
+    agg: MessageAggregate,
+) -> AsyncGenerator[tuple[str, MessageAggregate], None]:
+    """adapt() 的原始主循环。所有 yield 的 SSE 事件由 format_sse 写 sse.log。"""
 
     thinking_start: Optional[float] = None
     thinking_end: Optional[float] = None
