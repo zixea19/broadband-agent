@@ -30,6 +30,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Windows 兼容：保留默认编码（Linux/Mac 是 UTF-8，Windows 是 GBK），
+# 遇到不可编码字符（如 emoji）替换为 ? 而不是抛 UnicodeEncodeError 崩溃
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 try:
     import ce_insight_core as cic
 except ImportError as exc:
