@@ -193,23 +193,46 @@ def test_cei_pipeline_skill_schema():
         assert stale not in skill_md, f"SKILL.md 残留旧 schema: {stale}"
 
 
-def test_fault_diagnosis_render():
-    mod = _load_script("fault_diagnosis", "render.py")
-    result = json.loads(
-        mod.render(
-            json.dumps(
-                {
-                    "fault_tree_enabled": True,
-                    "whitelist_rules": ["偶发卡顿"],
-                    "severity_threshold": "warning",
-                }
-            )
-        )
+def test_fault_diagnosis_skill_schema():
+    """fault_diagnosis 已切换到 Tool Wrapper 范式，SKILL.md 声明新 schema，旧 Generator 字段已清理。"""
+    skill_md = (Path(_ROOT) / "skills" / "fault_diagnosis" / "SKILL.md").read_text(encoding="utf-8")
+    # 新 Tool Wrapper schema 关键字
+    for keyword in (
+        "Tool Wrapper",
+        "scenario",
+        "query-type",
+        "query-value",
+        "NETWORK_ACCESS_SLOW",
+        "NETWORK_ACCESS_FAILURE",
+        "LIVE_STUTTERING",
+        "GAME_STUTTERING",
+        "ontResId",
+        "uniUuid",
+        "ponResId",
+        "gatewayId",
+        "oltResId",
+        "fae_poc",
+        "fault_diagnosis.py",
+    ):
+        assert keyword in skill_md, f"SKILL.md 缺少关键字: {keyword}"
+    # 旧 Generator schema 关键字应已被清理
+    for stale in (
+        "fault_tree_enabled",
+        "whitelist_rules",
+        "severity_threshold",
+        "render.py",
+        "fault_config.json.j2",
+    ):
+        assert stale not in skill_md, f"SKILL.md 残留旧 Generator schema: {stale}"
+
+
+def test_fault_diagnosis_generator_artifacts_removed():
+    """Generator 范式的脚本和模板已删除。"""
+    skill_dir = Path(_ROOT) / "skills" / "fault_diagnosis"
+    assert not (skill_dir / "scripts" / "render.py").exists(), "旧 Generator 脚本未清理"
+    assert not (skill_dir / "references" / "fault_config.json.j2").exists(), (
+        "旧 Generator 模板未清理"
     )
-    assert result["skill"] == "fault_diagnosis"
-    assert result["params"]["fault_tree_enabled"] is True
-    assert "偶发卡顿" in result["config_json"]
-    assert "dispatch_result" in result
 
 
 def test_remote_optimization_skill_schema():

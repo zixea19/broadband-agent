@@ -53,7 +53,7 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 │   ├── plan_review/        # 方案评审 (Reviewer, violations + recommendations)
 │   ├── cei_pipeline/       # CEI 权重配置下发 (Tool Wrapper, scripts/ + 对接 FAE 真实接口)
 │   ├── cei_score_query/    # CEI 体验查询 (Tool Wrapper, 对接 FAE 真实接口)
-│   ├── fault_diagnosis/    # 故障诊断配置 (参数 schema 驱动)
+│   ├── fault_diagnosis/    # 故障诊断 (Tool Wrapper, 对接 FAE 真实接口, 内部 start+poll+query)
 │   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow, 参数 schema 驱动)
 │   ├── wifi_simulation/    # WIFI 3+1 步仿真 (户型图处理 → 信号仿真 → 网络仿真, 选点可选)
@@ -111,9 +111,9 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 - `plan_design` / `insight_plan` / `insight_reflect` — Instructional（无脚本，纯指令）
 - `goal_parsing` — Inversion（槽位追问引擎）
 - `plan_review` — Reviewer（违规清单 + 建议）
-- `cei_pipeline` / `cei_score_query` / `remote_optimization` — Tool Wrapper（封装 FAE 平台真实接口，CLI args 驱动）
+- `cei_pipeline` / `cei_score_query` / `fault_diagnosis` / `remote_optimization` — Tool Wrapper（封装 FAE 平台真实接口，CLI args 驱动；`fault_diagnosis` 脚本内部自驱 start+poll+query 三阶段）
 - `insight_decompose` / `insight_query` / `insight_nl2code` — Tool Wrapper（脚本执行型）
-- `fault_diagnosis` / `differentiated_delivery` — Generator（参数 schema 驱动，纯模板填空）
+- `differentiated_delivery` — Generator（参数 schema 驱动，纯模板填空）
 - `wifi_simulation` — Pipeline（内部 3+1 步串行）
 - `insight_report` — Generator（Markdown/ECharts 报告渲染）
 

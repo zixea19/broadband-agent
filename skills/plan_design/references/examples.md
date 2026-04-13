@@ -38,9 +38,7 @@
 
 ## 故障诊断方案
 **启用**: true
-- 故障树: 开启
-- 白名单规则: ["偶发卡顿"]
-- 严重性阈值: warning
+- 故障场景: LIVE_STUTTERING
 
 ## 远程闭环处置方案
 **启用**: true
@@ -53,8 +51,8 @@
 - 直播套餐 + 卖场走播 → CEI 权重大幅倾斜业务质量 (`ServiceQualityWeight:40`) 和 Wi-Fi 网络 (`WiFiNetworkWeight:25`)，压缩 ODN/OLT/网关层权重（走播场景故障源集中在前端业务）
 - 卖场走播 → 远程整改方式 `[2,3,4]`（信道+功率，**不含重启**，避免打断直播业务）
 - 直播套餐 → 远程执行策略 `idle`（闲时下发，避开 18:00-22:00 保障时段）
-- 投诉历史 = true → 严重性阈值升级为 warning
-- 直播场景 → 故障白名单加入"偶发卡顿"
+- 直播套餐 + 保障应用抖音 → 故障诊断 `scenario=LIVE_STUTTERING`
+- （`query-type/query-value` 由 Provisioning 从上一步 `cei_score_query.rows[0].ontResId` 提取，不写入方案段落）
 
 ---
 

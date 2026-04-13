@@ -65,8 +65,8 @@ get_skill_script(<skill_name>, <script_path>, execute=True, args=[...])
 
 | 范式 | `args` 形式 | 涉及 Skill |
 |---|---|---|
-| **Generator** | `["<params_json_string>"]` — 整个参数对象作为 JSON 字符串，列表唯一元素 | `fault_diagnosis` / `differentiated_delivery` / `wifi_simulation` / `data_insight` / `report_rendering` |
-| **Tool Wrapper** | `["--flag1", "value1", "--flag2", "value2", ...]` — argparse CLI 展开 | `cei_pipeline` / `cei_score_query` / `remote_optimization`（额外建议显式 `timeout=120`） |
+| **Generator** | `["<params_json_string>"]` — 整个参数对象作为 JSON 字符串，列表唯一元素 | `differentiated_delivery` / `wifi_simulation` / `data_insight` / `report_rendering` |
+| **Tool Wrapper** | `["--flag1", "value1", "--flag2", "value2", ...]` — argparse CLI 展开 | `cei_pipeline` / `cei_score_query` / `fault_diagnosis` / `remote_optimization`（额外建议显式 `timeout=120`，`fault_diagnosis` 建议 `timeout=180`） |
 
 混用形式会导致解析失败。具体示例以各 Skill 的 SKILL.md `How to Use` 章节为准。
 
@@ -114,10 +114,12 @@ Skill 产出的**载荷主体**由 `ToolCallCompleted` 事件送到 UI 层，直
 
    产出后，Provisioning **不做硬编码阈值门控**，而是把查询结果（`rows[].ceiScore` / `avgCeiScore` / `deductionDetails` 等）作为结构化上下文进入下一步。若 `errorCode` 非 0 → 状态行标 `❌`，摘要 `errorMsg` 作为指针，终止链路。
 
-3. **故障诊断** — 调用 `fault_diagnosis`。调用前：
-   - 读取 `fault_diagnosis` SKILL.md 的 Parameter Schema
-   - 结合步骤 2 返回的评分/扣分上下文（哪些扣分维度最严重、涉及哪些设备指针）自适应推导 `fault_diagnosis` 的参数（如 `severity_threshold` / `whitelist_rules` / 诊断聚焦的故障树分支）
-   - 查询结果整体体验良好（无明显低分 / 无显著扣分维度）→ 可跳过本步，在状态行写明"体验达标，无需进一步诊断"并终止链路
+3. **故障诊断** — 调用 `fault_diagnosis`（Tool Wrapper，内部自驱 start → poll → query 三阶段，一次 tool call）。参数推导：
+   - `--scenario` 来自方案段落 `## 故障诊断方案 - 故障场景` 字段（场景 1/2），或场景 3 从任务头 / 用户原话推导（详见 `fault_diagnosis/references/diagnosis_parameters.md`）
+   - `--query-type` / `--query-value` **从步骤 2 `cei_score_query.rows[0]` 提取**，按优先级 `ontResId` > `uniUuid` > `ponSn`(→ ponResId) > `gatewayMac`(→ gatewayId) > OLT 前缀(→ oltResId) 选取
+   - `get_skill_script` 建议 `timeout=180`（内部含轮询）
+   - 查询结果整体体验良好（`rows[]` 为空或无显著低分）→ 可跳过本步，在状态行写明"体验达标，无需进一步诊断"并终止链路
+   - 诊断成功后，把 `diagnoseResult` 作为结构化上下文进入下一步
 
 4. **远程闭环** — 调用 `remote_optimization`。参数按其 SKILL.md 推导，执行策略和整改方式来自方案段落或关键画像（如直播场景避重启）。若步骤 3 诊断结论为"需人工处置 / 不允许远程修复" → 跳过本步，状态行标 `⚠️` 并报告终止原因。
 

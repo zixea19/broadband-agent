@@ -47,9 +47,9 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 
 ## 故障诊断方案
 **启用**: true | false
-- 故障树: 开启 | 关闭
-- 白名单规则: <whitelist_rules 列表>
-- 严重性阈值: <severity_threshold>  # info | warning | major | critical
+- 故障场景: <scenario>  # NETWORK_ACCESS_SLOW | NETWORK_ACCESS_FAILURE | LIVE_STUTTERING | GAME_STUTTERING（下划线写法）
+
+（query-type / query-value 不在方案段落里，由 Provisioning 从上一步 `cei_score_query` 结果或关键画像推导）
 
 ## 远程闭环处置方案
 **启用**: true | false
@@ -69,7 +69,7 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 | WIFI 仿真方案 | `wifi_simulation` | 无（Skill 内部自驱 4 步） |
 | 差异化承载方案 | `differentiated_delivery` | `slice_type, target_app, whitelist, bandwidth_guarantee_mbps` |
 | CEI 配置方案 | `cei_pipeline` | `weights` (8 维度 CSV 字符串) |
-| 故障诊断方案 | `fault_diagnosis` | `fault_tree_enabled, whitelist_rules, severity_threshold` |
+| 故障诊断方案 | `fault_diagnosis` | `scenario`（`query-type` / `query-value` 由 Provisioning 推导，不写入方案段落） |
 | 远程闭环处置方案 | `remote_optimization` | `strategy, rectification_method, operation_time` |
 
 ## 启用决策规则（LLM 推理规则）
@@ -111,11 +111,17 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 - 家庭直播 → `[1, 2]`（重启 + 信道切换，最小影响）
 - 常规维护 / 意图不明 → 不填（代表"全部整改方式"）
 
-**场景 → 故障诊断白名单**
-- 直播场景 → 加入"偶发卡顿"白名单（避免误判持续故障）
-- 其他 → 空
+**套餐 / 保障应用 → 故障诊断 `scenario`**
 
-**投诉历史 = true** → 故障诊断 `severity_threshold` 提升为 `warning`
+> FAE 平台仅支持 4 个枚举（下划线写法），详细推导规则见 `fault_diagnosis/references/diagnosis_parameters.md`。
+
+| 套餐 / 保障应用 / 投诉关键词 | 推荐 `scenario` |
+|---|---|
+| 保障应用含直播类（抖音 / 快手 / B 站）或直播套餐 | `LIVE_STUTTERING` |
+| 保障应用含游戏类或游戏用户 | `GAME_STUTTERING` |
+| 投诉关键词含"断网 / 掉线 / 上不了网" | `NETWORK_ACCESS_FAILURE` |
+| 投诉关键词含"网慢 / 速率低 / 卡顿（非业务场景）" | `NETWORK_ACCESS_SLOW` |
+| 全部无法推导（兜底） | `NETWORK_ACCESS_SLOW` |
 
 ## How to Use
 
