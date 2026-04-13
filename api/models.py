@@ -48,11 +48,22 @@ class ConversationListData(BaseModel):
 # ─── 步骤卡 ───────────────────────────────────────────────────────────────────
 
 class SubStep(BaseModel):
+    """单个 Skill 脚本执行结果。
+
+    字段契约严格对齐 docs/sse-interface-spec.md §sub_step 与
+    api/event_adapter.py 的 sub_step 事件生产：前端流式到达与历史回放
+    应当拿到结构一致的 SubStep（仅来源不同）。
+    """
+
     subStepId: str
     name: str
-    result: str
     completedAt: str
     durationMs: int
+    # 以下字段按 SSE 规范均为可选，缺失时前端也能正常渲染
+    scriptPath: Optional[str] = None
+    callArgs: Optional[List[str]] = None
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
 
 
 class Step(BaseModel):

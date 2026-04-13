@@ -88,6 +88,11 @@ def _tool_args(event: Any) -> dict:
 
 
 # ─── SubAgent 中文名映射 ───────────────────────────────────────────────────────
+#
+# member_id 归一化：configs/agents.yaml 里 agent key 用下划线（provisioning_wifi），
+# agno delegate_task_to_member / event.agent_id 可能是两种写法之一。
+# adapter 统一把下划线改短横线，下游 SSE stepId 对齐 docs/sse-interface-spec.md
+# 的 kebab-case 规范。
 
 _MEMBER_DISPLAY_NAMES: dict[str, str] = {
     "planning": "PlanningAgent",
@@ -96,6 +101,13 @@ _MEMBER_DISPLAY_NAMES: dict[str, str] = {
     "provisioning-delivery": "ProvisioningAgent (差异化承载)",
     "provisioning-cei-chain": "ProvisioningAgent (体验保障链)",
 }
+
+
+def _canonical_member_id(raw: Optional[str]) -> str:
+    """把 agno 原始 member_id / agent_id 归一化为 SSE 协议里的 kebab-case。"""
+    if not raw:
+        return ""
+    return str(raw).replace("_", "-")
 
 
 # ─── 核心适配器 ───────────────────────────────────────────────────────────────
@@ -186,7 +198,23 @@ async def _adapt_body(
     thinking_end: Optional[float] = None
     skill_start_times: dict[str, list] = {}
     skill_start_args: dict[str, list] = {}   # key -> [call_args, ...]
-    active_step: Optional[StepAggregate] = None
+
+    # ── step 路由注册表 ─────────────────────────────────────────────────────
+    # agno Team coordinate 模式下，Orchestrator 可能连发多个 delegate_task_to_member
+    # 的 ToolCallStarted 事件，之后 member 事件交织到达。单变量 active_step 会
+    # 被覆盖，导致 member 事件归属错位（全部被挂到最后一个 step）。
+    # 改用 agent_id → StepAggregate 注册表，每个 member 事件用它自己的 agent_id
+    # 查对应 step，事件顺序无关。
+    steps_by_id: dict[str, StepAggregate] = {}
+
+    def _step_for_event(event: Any, leader: bool) -> Optional[StepAggregate]:
+        """根据事件的 agent_id 找对应 step；leader 事件返回 None（归属顶层）。"""
+        if leader:
+            return None
+        sid = _source_id(event, leader=False)
+        if not sid:
+            return None
+        return steps_by_id.get(_canonical_member_id(sid))
 
     # ── trace 段级化状态 ────────────────────────────────────────────────────
     # thinking 与 member content 都按 token 流式到达；按段（source 切换 / 工具
@@ -243,8 +271,9 @@ async def _adapt_body(
                     thinking_end = time.monotonic()
                     agg.thinking_content += delta
                     payload: dict = {"delta": delta}
-                    if active_step:
-                        payload["stepId"] = active_step.step_id
+                    step_for_evt = _step_for_event(event, leader)
+                    if step_for_evt is not None:
+                        payload["stepId"] = step_for_evt.step_id
                     yield format_sse("thinking", payload), agg
                     # source 切换 → 旧段先 flush 再开新段
                     if sid and sid != reasoning_source:
@@ -262,8 +291,9 @@ async def _adapt_body(
                     thinking_end = time.monotonic()
                     agg.thinking_content += r_delta
                     payload = {"delta": r_delta}
-                    if active_step:
-                        payload["stepId"] = active_step.step_id
+                    step_for_evt = _step_for_event(event, leader)
+                    if step_for_evt is not None:
+                        payload["stepId"] = step_for_evt.step_id
                     yield format_sse("thinking", payload), agg
                     if sid and sid != reasoning_source:
                         _flush_reasoning()
@@ -287,37 +317,40 @@ async def _adapt_body(
             # 与 Orchestrator 的 text 同类，仅归属某个 step。
             # 不在后端解析 <!--event:xxx--> 标记，由前端按原文自行识别。
             # 其它 member 的 content 暂不处理（沿用原丢弃策略，避免范围蔓延）。
-            if (
-                etype == "RunContent"
-                and not leader
-                and active_step is not None
-                and active_step.step_id == "insight"
-            ):
-                c_delta = getattr(event, "content", None)
-                if c_delta:
-                    if reasoning_buffer:
-                        _flush_reasoning()
-                    text_delta = str(c_delta)
-                    active_step.text_content += text_delta
-                    member_text_buffers["insight"] = (
-                        member_text_buffers.get("insight", "") + text_delta
-                    )
-                    yield format_sse(
-                        "text",
-                        {"delta": text_delta, "stepId": "insight"},
-                    ), agg
-                continue
+            if etype == "RunContent" and not leader:
+                step_for_evt = _step_for_event(event, leader)
+                if step_for_evt is not None and step_for_evt.step_id == "insight":
+                    c_delta = getattr(event, "content", None)
+                    if c_delta:
+                        if reasoning_buffer:
+                            _flush_reasoning()
+                        text_delta = str(c_delta)
+                        step_for_evt.text_content += text_delta
+                        member_text_buffers["insight"] = (
+                            member_text_buffers.get("insight", "") + text_delta
+                        )
+                        yield format_sse(
+                            "text",
+                            {"delta": text_delta, "stepId": "insight"},
+                        ), agg
+                    continue
 
             # ── step_start ────────────────────────────────────────────────
+            # agno coordinate 模式下，leader 可能连发多个 delegate 的 ToolCallStarted，
+            # 每一个单独建 StepAggregate 并注册到 steps_by_id，互不覆盖。
             if etype == "ToolCallStarted" and leader and tname == "delegate_task_to_member":
                 args = _tool_args(event)
-                member_id = args.get("member_id", "")
-                if member_id not in _MEMBER_DISPLAY_NAMES:
+                canonical = _canonical_member_id(args.get("member_id", ""))
+                if canonical not in _MEMBER_DISPLAY_NAMES:
                     continue
-                title = _MEMBER_DISPLAY_NAMES[member_id]
-                active_step = StepAggregate(step_id=member_id, title=title)
-                agg.steps.append(active_step)
-                yield format_sse("step_start", {"stepId": member_id, "title": title}), agg
+                if canonical in steps_by_id:
+                    # 同一 member 被重复派发（极少见），沿用已有 step 即可
+                    continue
+                title = _MEMBER_DISPLAY_NAMES[canonical]
+                step = StepAggregate(step_id=canonical, title=title)
+                steps_by_id[canonical] = step
+                agg.steps.append(step)
+                yield format_sse("step_start", {"stepId": canonical, "title": title}), agg
                 continue
 
             # ── sub_step 计时开始 ─────────────────────────────────────────
@@ -329,6 +362,7 @@ async def _adapt_body(
                 args = _tool_args(event)
                 skill_name = args.get("skill_name", "unknown")
                 agent_id = getattr(event, "agent_id", "") or ""
+                # key 用原始 agent_id，避免不同 member 的相同 skill 互相踩
                 key = f"{agent_id}:{skill_name}"
                 skill_start_times.setdefault(key, [])
                 skill_start_times[key].append(time.monotonic())
@@ -368,7 +402,9 @@ async def _adapt_body(
                 result_raw = getattr(tool, "result", None) or ""
                 stdout, stderr = _extract_stdout_stderr(result_raw)
 
-                step_id = active_step.step_id if active_step else agent_id
+                # 用 event.agent_id（非 leader）查对应 step，不再依赖 active_step
+                step_for_evt = _step_for_event(event, leader=False)
+                step_id = step_for_evt.step_id if step_for_evt else _canonical_member_id(agent_id)
                 sub_step_id = f"{step_id}_{skill_name}"
                 completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -382,8 +418,8 @@ async def _adapt_body(
                     "completedAt": completed_at,
                     "durationMs": duration_ms,
                 }
-                if active_step:
-                    active_step.sub_steps.append(sub)
+                if step_for_evt is not None:
+                    step_for_evt.sub_steps.append(sub)
 
                 yield format_sse("sub_step", {"stepId": step_id, **sub}), agg
 
@@ -416,7 +452,7 @@ async def _adapt_body(
 
                 # insight 场景：每次 insight_query / insight_report 完成即发独立 render
                 # 与 wifi 图一致的渐进式节奏，对应 docs/sse-interface-spec.md §render
-                if active_step is not None and active_step.step_id == "insight":
+                if step_for_evt is not None and step_for_evt.step_id == "insight":
                     for rb in _emit_insight_render(skill_name, result_raw, sub_step_id):
                         agg.render_blocks.append(rb)
                         yield format_sse("render", rb), agg
@@ -426,12 +462,13 @@ async def _adapt_body(
             # ── step_end ──────────────────────────────────────────────────
             if etype == "ToolCallCompleted" and leader and tname == "delegate_task_to_member":
                 args = _tool_args(event)
-                member_id = args.get("member_id", "")
-                if member_id not in _MEMBER_DISPLAY_NAMES:
+                canonical = _canonical_member_id(args.get("member_id", ""))
+                if canonical not in _MEMBER_DISPLAY_NAMES:
                     continue
 
-                active_step = None
-                yield format_sse("step_end", {"stepId": member_id}), agg
+                # 不从 steps_by_id 移除：后续可能还有 trailing 的 member 事件；
+                # step_end 只是标记前端 UI 的完成态
+                yield format_sse("step_end", {"stepId": canonical}), agg
                 continue
 
             # ── member RunCompleted：flush member text + trace.member_completed ──
