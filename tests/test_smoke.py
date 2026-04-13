@@ -1,4 +1,4 @@
-"""冒烟测试 — 覆盖 Team + 14 Skills 架构的导入、配置与脚本执行。"""
+"""冒烟测试 — 覆盖 Team + 15 Skills 架构的导入、配置与脚本执行。"""
 
 import importlib.util
 import json
@@ -58,9 +58,10 @@ def test_agents_config_structure():
 
     # Planning 挂载 3 个 Skill
     assert set(agents["planning"]["skills"]) == {"goal_parsing", "plan_design", "plan_review"}
-    # CEI 链实例挂载 3 个 Skill
+    # CEI 链实例挂载 4 个 Skill（配置 → 查询 → 诊断 → 闭环）
     assert set(agents["provisioning_cei_chain"]["skills"]) == {
         "cei_pipeline",
+        "cei_score_query",
         "fault_diagnosis",
         "remote_optimization",
     }
@@ -71,13 +72,14 @@ def test_agents_config_structure():
 
 
 def test_all_skills_present():
-    """14 个 Skill 目录均存在且含 SKILL.md。"""
+    """15 个 Skill 目录均存在且含 SKILL.md。"""
     skills_dir = Path(_ROOT) / "skills"
     expected_skills = [
         "goal_parsing",
         "plan_design",
         "plan_review",
         "cei_pipeline",
+        "cei_score_query",
         "fault_diagnosis",
         "remote_optimization",
         "differentiated_delivery",
@@ -1208,16 +1210,17 @@ def test_render_tool_call_completed_non_skill_output_single_block():
 
 
 def test_localskills_loads_all():
-    """LocalSkills 能扫描并加载全部 14 个 Skill。"""
+    """LocalSkills 能扫描并加载全部 15 个 Skill。"""
     from agno.skills.loaders.local import LocalSkills
 
     loader = LocalSkills(str(Path(_ROOT) / "skills"), validate=False)
     skills = loader.load()
-    assert len(skills) == 14
+    assert len(skills) == 15
     names = {s.name for s in skills}
     expected = {
         "goal_parsing", "plan_design", "plan_review",
-        "cei_pipeline", "fault_diagnosis", "remote_optimization",
+        "cei_pipeline", "cei_score_query",
+        "fault_diagnosis", "remote_optimization",
         "differentiated_delivery", "wifi_simulation",
         "insight_plan", "insight_decompose", "insight_query",
         "insight_nl2code", "insight_reflect", "insight_report",
@@ -1267,7 +1270,12 @@ def test_create_team_structure():
         elif m.name == "provisioning_delivery":
             assert skill_names == {"differentiated_delivery"}
         elif m.name == "provisioning_cei_chain":
-            assert skill_names == {"cei_pipeline", "fault_diagnosis", "remote_optimization"}
+            assert skill_names == {
+                "cei_pipeline",
+                "cei_score_query",
+                "fault_diagnosis",
+                "remote_optimization",
+            }
 
 
 # ============================================================================

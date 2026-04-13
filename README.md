@@ -1,6 +1,6 @@
 # 家宽网络调优智能助手
 
-基于 [agno](https://github.com/agno-agi/agno) 框架构建的家宽网络调优场景多智能体系统，采用 **Team (coordinate 模式) + 14 个业务 Skills** 的分层架构。
+基于 [agno](https://github.com/agno-agi/agno) 框架构建的家宽网络调优场景多智能体系统，采用 **Team (coordinate 模式) + 15 个业务 Skills** 的分层架构。
 
 ## 功能特性
 
@@ -19,8 +19,9 @@ OrchestratorTeam (leader, coordinate 模式)
   ���                            + insight_nl2code + insight_reflect + insight_report)
   ├─ ProvisioningWifiAgent    (wifi_simulation)              ← 单 Skill 内部 4 步
   ├─ ProvisioningDeliveryAgent (differentiated_delivery)
-  └─ ProvisioningCeiChainAgent (cei_pipeline + fault_diagnosis + remote_optimization)
-                                                             ← 条件串行 workflow
+  └─ ProvisioningCeiChainAgent (cei_pipeline + cei_score_query
+                                + fault_diagnosis + remote_optimization)
+                                                             ← 顺序串行 workflow
 ```
 
 3 个 Provisioning 实例**共享** `prompts/provisioning.md`，通过 `description` 字段注入各自的功能目标。
@@ -28,7 +29,7 @@ OrchestratorTeam (leader, coordinate 模式)
 ### 业务 Skill 设计模式
 
 - **`plan_design`**：Instructional 范式 — 纯 SKILL.md + few-shot 样例，**无脚本**，由 LLM 直接生成分段 Markdown 方案
-- **`cei_pipeline / remote_optimization`**：Tool Wrapper 范式 — 封装 FAE 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini
+- **`cei_pipeline / cei_score_query / remote_optimization`**：Tool Wrapper 范式 — 封装 FAE 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini
 - **`fault_diagnosis / differentiated_delivery`**：Generator 范式 — SKILL.md 声明参数 schema，Jinja2 模板纯参数填空，**无业务规则分支**（业务规则已上移到 PlanningAgent）
 - **`goal_parsing / plan_review`**：Inversion + Reviewer — 有状态/确定性任务保留脚本
 - **`insight_*`**（6 个 Skill）：Pipeline — Plan → [Decompose → Execute → Reflect] × N Phase → Report 驱动，接入 `ce_insight_core` 真实计算内核（三元组查询 + 12 种洞察函数 + NL2Code 沙箱）
@@ -106,11 +107,12 @@ $env:NO_PROXY="localhost,127.0.0.1"
 │   ├── planning.md         # PlanningAgent 作业手册
 │   ├── insight.md          # InsightAgent 作业手册
 │   └── provisioning.md     # 3 个 Provisioning 实例共享的作业手册
-├── skills/                 # 14 个业务 Skill (LocalSkills 自动扫描)
+├── skills/                 # 15 个业务 Skill (LocalSkills 自动扫描)
 │   ├── goal_parsing/       # 槽位追问引擎
 │   ├── plan_design/        # 方案设计 (Instructional, 无脚本)
 │   ├── plan_review/        # 方案评审 (violations + recommendations)
 │   ├── cei_pipeline/       # CEI 权重配置下发 (Tool Wrapper, 对接 FAE 真实接口)
+│   ├── cei_score_query/    # CEI 体验查询 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── fault_diagnosis/    # 故障诊断配置
 │   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow)
@@ -163,4 +165,4 @@ uv run pytest tests/test_smoke.py -v
 pytest tests/test_smoke.py -v
 ```
 
-49 项冒烟测试，覆盖配置加载、14 个 Skill 脚本执行、UI 渲染（流式事件处理 + 思考隔离 + 工具调用折叠）、Team 装配（5 SubAgent + 正确 Skill 子集）、可观测性（SQLite schema + trace 双写）。
+49 项冒烟测试，覆盖配置加载、15 个 Skill 脚本执行、UI 渲染（流式事件处理 + 思考隔离 + 工具调用折叠）、Team 装配（5 SubAgent + 正确 Skill 子集）、可观测性（SQLite schema + trace 双写）。

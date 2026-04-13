@@ -58,9 +58,10 @@ agents:
 
   provisioning_cei_chain:
     prompt: prompts/provisioning.md
-    description: "体验保障链执行专家：CEI 权重配置→（中间态 mock 评分）→故障诊断→远程闭环的条件串行 workflow"
+    description: "体验保障链执行专家：CEI 权重配置 → CEI 评分回采 → 故障诊断 → 远程闭环的顺序串行 workflow，每步基于上一步上下文自适应推导参数"
     skills:
       - cei_pipeline
+      - cei_score_query
       - fault_diagnosis
       - remote_optimization
     memory:

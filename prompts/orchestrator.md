@@ -13,7 +13,7 @@
 | `insight` | 决策型 | 数据洞察（查询 + 归因 + 报告） |
 | `provisioning_wifi` | 执行型 | WIFI 仿真执行（内部 4 步） |
 | `provisioning_delivery` | 执行型 | 差异化承载开通（切片/应用白名单/Appflow） |
-| `provisioning_cei_chain` | 执行型 | 体验保障链（CEI 评分 → 故障诊断 → 远程闭环） |
+| `provisioning_cei_chain` | 执行型 | 体验保障链（CEI 权重配置 → CEI 评分查询 → 故障诊断 → 远程闭环） |
 
 ---
 
@@ -53,6 +53,7 @@ Orchestrator 只做关键词匹配，**不提取参数**，把用户原话作为
 | 远程重启 / 远程优化 / 网关重启 / 闭环 | `provisioning_cei_chain` | `[任务类型: 单点远程操作]` |
 | 卡顿定界 / 故障诊断 / 故障树 / 故障定界 | `provisioning_cei_chain` | `[任务类型: 单点故障诊断]` |
 | CEI 权重 / CEI 阈值配置 / 业务质量权重 / 评分权重 / CEI 配置 | `provisioning_cei_chain` | `[任务类型: 单点 CEI 配置]` |
+| CEI 查询 / CEI 评分 / 体验查询 / 卡顿评分 / 低分用户 / 扣分详情 | `provisioning_cei_chain` | `[任务类型: 单点 CEI 查询]` |
 
 关键词冲突时，按**最具体**原则选择（如同时出现 WIFI 和 CEI 按 Planning 路径处理）。
 
@@ -71,7 +72,7 @@ Orchestrator 只做关键词匹配，**不提取参数**，把用户原话作为
 **规则**：
 - 若某段落 `启用: false`，**跳过**对应实例，不派发
 - 启用的多个实例**并行**调用
-- CEI + 故障 + 闭环 **三段合并**传入 `provisioning_cei_chain`，由它内部条件串行处理
+- CEI + 故障 + 闭环 **三段合并**传入 `provisioning_cei_chain`，由它内部顺序串行处理（含 CEI 评分回采步骤）
 
 ---
 
@@ -156,7 +157,7 @@ Provisioning 实例全部返回后，Orchestrator 用 Markdown 组装：
 <执行状态指针 + 切片/应用保障配置的关键指针（切片 ID / 保障应用名 / 带宽值）>
 
 ### 体验保障链
-<CEI 权重下发状态 + 中间态 mock 评分摘要 + 故障诊断/远程闭环的状态指针>
+<CEI 权重下发状态 + CEI 评分回采摘要指针（查询维度 / 记录数 / Top 低分样例）+ 故障诊断/远程闭环的状态指针>
 
 ## 下一步建议
 <基于执行结果的建议>
@@ -165,7 +166,7 @@ Provisioning 实例全部返回后，Orchestrator 用 Markdown 组装：
 **指针 vs 载荷的汇总纪律**（与 provisioning.md §3 Step 4、insight.md §8 输出契约对齐）：
 - ❌ 禁止复写 Skill stdout 的**载荷主体**（完整 YAML/JSON 配置、完整 Markdown 章节、完整 ECharts option、下发日志明细、数据表行）— 载荷已由 UI 事件层直接渲染为独立消息块对用户可见
 - ✅ 允许并鼓励引用**指针级信息**（PON 口 ID、评分 / 阈值、图片 / 文件路径、配置 ID、状态码、数量统计），用户靠这些感知流程
-- ✅ Provisioning 返回的**结构化交接契约**（如中间态 mock 评分摘要、评分 gating JSON）原样保留
+- ✅ Provisioning 返回的**结构化交接契约**（如 CEI 评分回采摘要、故障诊断参数推导依据）原样保留
 - ❌ 不得在没有明确数据支撑时编造"下一步建议"
 
 ---
