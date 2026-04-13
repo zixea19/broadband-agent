@@ -12,7 +12,9 @@
         "group_column": "portUuid",            // 可选；不传则从 breakdown 推导
         "data_path": "mock",
         "phase_id": 1,                         // 可选；由 InsightAgent 传入，用于前端关联
-        "step_id": 1                           // 可选；由 InsightAgent 传入，用于前端关联
+        "step_id": 1,                          // 可选；由 InsightAgent 传入，用于前端关联
+        "phase_name": "L1-定位低分PON口",      // 可选；MacroPlan phases[i].name
+        "step_name": "找出 CEI_score 最低的 PON 口"  // 可选；Step 数组的 rationale
     }
 
 输出（stdout）：JSON 字符串，形如
@@ -29,7 +31,9 @@
         "found_entities": {"portUuid": [...]},
         "data_shape": [row, col],
         "phase_id": int | null,
-        "step_id": int | null
+        "step_id": int | null,
+        "phase_name": str | null,
+        "step_name": str | null
     }
 
 `chart_configs` 原样透传 ce_insight_core 的 ECharts option，**禁止改写**。
