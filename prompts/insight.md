@@ -545,7 +545,7 @@ Report 阶段只产出 **3 样东西**（不多不少）：
 
 ### 步骤
 
-1. 汇总所有 Phase 的 Step 结果，构造 context JSON：
+1. 汇总所有 Phase 的 Step 结果，构造 context JSON。**对于执行期间 `chart_configs` 非空的步骤，在该步骤的 `description` 末尾追加 `\n\n[CHART:p{phase_id}s{step_id}]`**（占位符由你插入，模板不会自动添加）：
    ```json
    {
      "title": "网络质量数据洞察报告",
@@ -560,9 +560,8 @@ Report 阶段只产出 **3 样东西**（不多不少）：
              "step_id": 1,
              "insight_type": "OutstandingMin",
              "significance": 0.41,
-             "description": "...",
-             "found_entities": {"portUuid": [...]},
-             "chart_configs": {...}
+             "description": "CEI 最低 PON 口为 288b6c71（54.08）\n\n[CHART:p1s1]",
+             "found_entities": {"portUuid": [...]}
            }
          ],
          "reflection": {"choice": "A", "reason": "..."}

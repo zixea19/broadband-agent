@@ -50,18 +50,6 @@
 - {{ step.description }}
 {% endif %}
 {% endif %}
-{% if step.rationale %}
-- *目的*: {{ step.rationale }}
-{% endif %}
-{% if step.found_entities %}
-- *命中实体*: {% for k, v in step.found_entities.items() %}{{ k }}=[{{ v | join(", ") }}]{% if not loop.last %}; {% endif %}{% endfor %}
-{% endif %}
-{% if step.fix_warnings %}
-- *字段修复警告*: {{ step.fix_warnings | join("; ") }}
-{% endif %}
-{% if step.chart_configs %}
-[CHART:p{{ phase.phase_id }}s{{ step.step_id }}]
-{% endif %}
 
 {% endfor %}
 {% endif %}
