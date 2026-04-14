@@ -113,10 +113,18 @@ async def send_message(conv_id: str, body: SendMessageRequest):
                 try:
                     steps_data = []
                     for s in agg.steps:
-                        # 最终 items：已积累的 thinking/sub_step 块 + 尾部 text 块（如有）
+                        # 流结束时 flush 未被 ToolCallStarted 消费的残留缓冲
+                        # （最后一个 Skill 完成后 InsightAgent 可能还有反思/总结文本和 thinking）
                         items = list(s.items)
-                        if s.text_content.strip():
-                            items.append({"type": "text", "content": s.text_content})
+                        if s.pending_text:
+                            items.append({"type": "text", "content": s.pending_text})
+                        if s.pending_thinking:
+                            items.append({
+                                "type": "thinking",
+                                "content": s.pending_thinking,
+                                "startedAt": 0,
+                                "endedAt": 0,
+                            })
                         steps_data.append({
                             "stepId": s.step_id,
                             "title": s.title,

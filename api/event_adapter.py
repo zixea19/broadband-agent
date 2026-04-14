@@ -49,6 +49,9 @@ class StepAggregate:
     sub_steps: list = field(default_factory=list)
     # SubAgent 本身输出的 assistant content（如 InsightAgent 的阶段 marker 文本）
     text_content: str = ""
+    # ToolCallStarted 前积累的 text 缓冲（InsightAgent 在 Skill 调用间输出中间文本）
+    # 与 pending_thinking 同步 flush 进 items，保证 text→thinking→sub_step 顺序
+    pending_text: str = ""
     # 当前 subStep 启动前积累的 thinking 缓冲；ToolCallStarted 时 flush 进 items，然后重置
     pending_thinking: str = ""
 
@@ -355,6 +358,8 @@ async def _adapt_body(
                     if c_delta:
                         text_delta = str(c_delta)
                         step_for_evt.text_content += text_delta
+                        # pending_text 缓冲：ToolCallStarted 时按位置 flush 进 items
+                        step_for_evt.pending_text += text_delta
                         # observability 层独立记录每个 member 的 content
                         member_text_buffers[step_for_evt.step_id] = (
                             member_text_buffers.get(step_for_evt.step_id, "")
@@ -406,16 +411,29 @@ async def _adapt_body(
                     "scriptPath": args.get("script_path", ""),
                     "callArgs": args.get("args", []),
                 })
-                # pending_thinking → items thinking 块，然后重置缓冲
+                # ── UUID 注册：把 agent_id(UUID) → step 映射写入 steps_by_id ──────
+                # ReasoningContentDelta 事件只带 agent_id(UUID)，不带 agent_name；
+                # 在此首次见到真实 agent_id 时补注册，之后 thinking 事件才能正确归属。
                 step_for_evt_start = _step_for_event(event, leader=False)
-                if step_for_evt_start is not None and step_for_evt_start.pending_thinking:
-                    step_for_evt_start.items.append({
-                        "type": "thinking",
-                        "content": step_for_evt_start.pending_thinking,
-                        "startedAt": 0,
-                        "endedAt": 0,
-                    })
-                    step_for_evt_start.pending_thinking = ""
+                if step_for_evt_start is not None and agent_id and agent_id not in steps_by_id:
+                    steps_by_id[agent_id] = step_for_evt_start
+
+                # ── flush：先 pending_text，再 pending_thinking，保证顺序 ──────────
+                if step_for_evt_start is not None:
+                    if step_for_evt_start.pending_text:
+                        step_for_evt_start.items.append({
+                            "type": "text",
+                            "content": step_for_evt_start.pending_text,
+                        })
+                        step_for_evt_start.pending_text = ""
+                    if step_for_evt_start.pending_thinking:
+                        step_for_evt_start.items.append({
+                            "type": "thinking",
+                            "content": step_for_evt_start.pending_thinking,
+                            "startedAt": 0,
+                            "endedAt": 0,
+                        })
+                        step_for_evt_start.pending_thinking = ""
 
                 # ── trace: tool_invoke ────────────────────────────────
                 if tracer is not None:
