@@ -18,7 +18,7 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
   ├─ InsightAgent              (insight_plan + insight_decompose + insight_query
   │                             + insight_nl2code + insight_reflect + insight_report)
   ├─ ProvisioningWifiAgent     (wifi_simulation)              ← 单 Skill 自驱 4 步
-  ├─ ProvisioningDeliveryAgent (differentiated_delivery)
+  ├─ ProvisioningDeliveryAgent (experience_assurance)
   └─ ProvisioningCeiChainAgent (cei_pipeline + cei_score_query
                                 + fault_diagnosis + remote_optimization)
                                                               ← 顺序串行 workflow
@@ -55,7 +55,7 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 │   ├── cei_score_query/    # CEI 体验查询 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── fault_diagnosis/    # 故障诊断 (Tool Wrapper, 对接 FAE 真实接口, 内部 start+poll+query)
 │   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
-│   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow, 参数 schema 驱动)
+│   ├── experience_assurance/ # 差异化承载 (Tool Wrapper, 对接 FAN 网络切片服务 app-flow 接口)
 │   ├── wifi_simulation/    # WIFI 3+1 步仿真 (户型图处理 → 信号仿真 → 网络仿真, 选点可选)
 │   ├── insight_plan/       # 洞察规划 (Instructional, MacroPlan 生成)
 │   ├── insight_decompose/  # Phase 分解 (Tool Wrapper, list_schema.py + 参考文件)
@@ -111,9 +111,8 @@ OrchestratorTeam (leader, coordinate 模式, prompts/orchestrator.md)
 - `plan_design` / `insight_plan` / `insight_reflect` — Instructional（无脚本，纯指令）
 - `goal_parsing` — Inversion（槽位追问引擎）
 - `plan_review` — Reviewer（违规清单 + 建议）
-- `cei_pipeline` / `cei_score_query` / `fault_diagnosis` / `remote_optimization` — Tool Wrapper（封装 FAE 平台真实接口，CLI args 驱动；`fault_diagnosis` 脚本内部自驱 start+poll+query 三阶段）
+- `cei_pipeline` / `cei_score_query` / `fault_diagnosis` / `remote_optimization` / `experience_assurance` — Tool Wrapper（封装 FAE / FAN 平台真实接口，CLI args 驱动；`fault_diagnosis` 脚本内部自驱 start+poll+query 三阶段；`experience_assurance` 由 Provisioning 层做"业务字段 → UUID 参数"映射）
 - `insight_decompose` / `insight_query` / `insight_nl2code` — Tool Wrapper（脚本执行型）
-- `differentiated_delivery` — Generator（参数 schema 驱动，纯模板填空）
 - `wifi_simulation` — Pipeline（内部 3+1 步串行）
 - `insight_report` — Generator（Markdown/ECharts 报告渲染）
 

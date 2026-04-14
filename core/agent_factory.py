@@ -6,8 +6,9 @@
       ├─ InsightAgent          (insight_plan + insight_decompose + insight_query
       │                         + insight_nl2code + insight_reflect + insight_report)
       ├─ ProvisioningWifiAgent (wifi_simulation)
-      ├─ ProvisioningDeliveryAgent (differentiated_delivery)
-      └─ ProvisioningCeiChainAgent (cei_pipeline + fault_diagnosis + remote_optimization)
+      ├─ ProvisioningDeliveryAgent (experience_assurance)
+      └─ ProvisioningCeiChainAgent (cei_pipeline + cei_score_query
+                                    + fault_diagnosis + remote_optimization)
 
 3 个 Provisioning 实例共享 provisioning.md prompt，各自挂载不同的 Skills 子集。
 """

@@ -18,7 +18,7 @@ OrchestratorTeam (leader, coordinate 模式)
   ├─ InsightAgent             (insight_plan + insight_decompose + insight_query
   ���                            + insight_nl2code + insight_reflect + insight_report)
   ├─ ProvisioningWifiAgent    (wifi_simulation)              ← 单 Skill 内部 4 步
-  ├─ ProvisioningDeliveryAgent (differentiated_delivery)
+  ├─ ProvisioningDeliveryAgent (experience_assurance)
   └─ ProvisioningCeiChainAgent (cei_pipeline + cei_score_query
                                 + fault_diagnosis + remote_optimization)
                                                              ← 顺序串行 workflow
@@ -29,8 +29,7 @@ OrchestratorTeam (leader, coordinate 模式)
 ### 业务 Skill 设计模式
 
 - **`plan_design`**：Instructional 范式 — 纯 SKILL.md + few-shot 样例，**无脚本**，由 LLM 直接生成分段 Markdown 方案
-- **`cei_pipeline / cei_score_query / fault_diagnosis / remote_optimization`**：Tool Wrapper 范式 — 封装 FAE 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini（`fault_diagnosis` 脚本内部自驱 start+poll+query 三阶段，Agent 仅感知一次 tool call）
-- **`differentiated_delivery`**：Generator 范式 — SKILL.md 声明参数 schema，Jinja2 模板纯参数填空，**无业务规则分支**（业务规则已上移到 PlanningAgent）
+- **`cei_pipeline / cei_score_query / fault_diagnosis / remote_optimization / experience_assurance`**：Tool Wrapper 范式 — 封装 FAE / FAN 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini（`fault_diagnosis` 脚本内部自驱 start+poll+query 三阶段，Agent 仅感知一次 tool call；`experience_assurance` 由 Provisioning 层完成"业务字段 → UUID 参数"映射，映射表见 `experience_assurance/references/assurance_parameters.md`）
 - **`goal_parsing / plan_review`**：Inversion + Reviewer — 有状态/确定性任务保留脚本
 - **`insight_*`**（6 个 Skill）：Pipeline — Plan → [Decompose → Execute → Reflect] × N Phase → Report 驱动，接入 `ce_insight_core` 真实计算内核（三元组查询 + 12 种洞察函数 + NL2Code 沙箱）
 - **`wifi_simulation`**：Pipeline — 单脚本内部 3+1 步（户型图处理 → 信号强度仿真 → 网络性能仿真，选点可选）
@@ -115,7 +114,7 @@ $env:NO_PROXY="localhost,127.0.0.1"
 │   ├── cei_score_query/    # CEI 体验查询 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── fault_diagnosis/    # 故障诊断 (Tool Wrapper, 对接 FAE 真实接口, 内部 start+poll+query)
 │   ├── remote_optimization/# 远程优化动作 (Tool Wrapper, 对接 FAE 真实接口)
-│   ├── differentiated_delivery/ # 差异化承载 (切片/Appflow)
+│   ├── experience_assurance/ # 差异化承载 (Tool Wrapper, 对接 FAN 网络切片服务 app-flow 接口)
 │   ├── wifi_simulation/    # WIFI 4 步仿真
 │   ├── insight_plan/       # 洞察规划 (Instructional, MacroPlan 生成)
 │   ├── insight_decompose/  # Phase 分解 (Tool Wrapper, list_schema.py + 参考文件)

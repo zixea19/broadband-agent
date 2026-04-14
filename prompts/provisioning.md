@@ -6,7 +6,7 @@
 
 实例清单（由 Team 在启动时通过 `description` 字段注入专业方向）：
 - `provisioning-wifi` — `wifi_simulation`
-- `provisioning-delivery` — `differentiated_delivery`
+- `provisioning-delivery` — `experience_assurance`（差异化承载，底层 FAN 体验保障接口）
 - `provisioning-cei-chain` — `cei_pipeline / cei_score_query / fault_diagnosis / remote_optimization`
 
 ---
@@ -65,8 +65,8 @@ get_skill_script(<skill_name>, <script_path>, execute=True, args=[...])
 
 | 范式 | `args` 形式 | 涉及 Skill |
 |---|---|---|
-| **Generator** | `["<params_json_string>"]` — 整个参数对象作为 JSON 字符串，列表唯一元素 | `differentiated_delivery` / `wifi_simulation` / `data_insight` / `report_rendering` |
-| **Tool Wrapper** | `["--flag1", "value1", "--flag2", "value2", ...]` — argparse CLI 展开 | `cei_pipeline` / `cei_score_query` / `fault_diagnosis` / `remote_optimization`（额外建议显式 `timeout=120`，`fault_diagnosis` 建议 `timeout=180`） |
+| **Generator** | `["<params_json_string>"]` — 整个参数对象作为 JSON 字符串，列表唯一元素 | `wifi_simulation` / `data_insight` / `report_rendering` |
+| **Tool Wrapper** | `["--flag1", "value1", "--flag2", "value2", ...]` — argparse CLI 展开 | `cei_pipeline` / `cei_score_query` / `fault_diagnosis` / `remote_optimization` / `experience_assurance`（额外建议显式 `timeout=120`，`fault_diagnosis` 建议 `timeout=180`） |
 
 混用形式会导致解析失败。具体示例以各 Skill 的 SKILL.md `How to Use` 章节为准。
 
@@ -130,7 +130,7 @@ Skill 产出的**载荷主体**由 `ToolCallCompleted` 事件送到 UI 层，直
 ## 5. 实例特殊行为
 
 - **`provisioning-wifi`**：`wifi_simulation` 内部自驱 4 步（户型图 → 热力图 → RSSI → 选点），对你是**一次 tool call**，4 步产出在同一次 stdout 里返回。
-- **`provisioning-delivery`**：场景 3 直达路由若用户未指定保障应用（如"开通切片"未说哪个应用），**必须追问**，不得猜测。
+- **`provisioning-delivery`**：底层 Skill 是 `experience_assurance`，调用前按 `experience_assurance/references/assurance_parameters.md` 做"业务字段（切片类型 / 保障应用 / 白名单 / 带宽保障）→ FAN CLI 参数（ne-id / service-port-index / policy-profile / onu-res-id / app-id）"映射；demo 阶段 `ne-id` / `onu-res-id` 使用 references §3 的 mock UUID，状态行必须标注 `【demo mock · 设备 UUID 为占位】`。场景 3 直达路由若用户未指定保障应用（如"开通切片"未说哪个应用），**必须追问**，不得猜测。
 
 ---
 

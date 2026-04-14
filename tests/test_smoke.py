@@ -67,8 +67,8 @@ def test_agents_config_structure():
     }
     # WIFI 实例只挂 wifi_simulation
     assert agents["provisioning_wifi"]["skills"] == ["wifi_simulation"]
-    # Delivery 实例只挂 differentiated_delivery
-    assert agents["provisioning_delivery"]["skills"] == ["differentiated_delivery"]
+    # Delivery 实例只挂 experience_assurance（差异化承载，FAN 底层）
+    assert agents["provisioning_delivery"]["skills"] == ["experience_assurance"]
 
 
 def test_all_skills_present():
@@ -82,7 +82,7 @@ def test_all_skills_present():
         "cei_score_query",
         "fault_diagnosis",
         "remote_optimization",
-        "differentiated_delivery",
+        "experience_assurance",
         "wifi_simulation",
         "insight_plan",
         "insight_decompose",
@@ -426,24 +426,43 @@ def test_fae_poc_example_committed():
     assert "fae_poc/NCELogin.py" in gitignore
 
 
-def test_differentiated_delivery_render():
-    mod = _load_script("differentiated_delivery", "render.py")
-    result = json.loads(
-        mod.render(
-            json.dumps(
-                {
-                    "slice_type": "application_slice",
-                    "target_app": "抖音",
-                    "whitelist": ["douyin.com"],
-                    "bandwidth_guarantee_mbps": 50,
-                }
-            )
-        )
+def test_experience_assurance_skill_schema():
+    """experience_assurance 已切换到 Tool Wrapper 范式，SKILL.md 声明新 CLI schema，旧 Generator 字段已清理。"""
+    skill_md = (Path(_ROOT) / "skills" / "experience_assurance" / "SKILL.md").read_text(
+        encoding="utf-8"
     )
-    assert result["skill"] == "differentiated_delivery"
-    assert result["params"]["target_app"] == "抖音"
-    assert "抖音" in result["config_json"]
-    assert "slice_id" in result["dispatch_result"]
+    for keyword in (
+        "Tool Wrapper",
+        "ne-id",
+        "service-port-index",
+        "policy-profile",
+        "onu-res-id",
+        "app-id",
+        "app-flow/create-assure-config-task",
+        "fae_poc",
+        "experience_assurance.py",
+        "assurance_parameters.md",
+    ):
+        assert keyword in skill_md, f"SKILL.md 缺少关键字: {keyword}"
+    for stale in (
+        "slice_type:",
+        "target_app:",
+        "bandwidth_guarantee_mbps:",
+        "render.py",
+        "slice_config.json.j2",
+    ):
+        assert stale not in skill_md, f"SKILL.md 残留旧 Generator schema: {stale}"
+
+
+def test_differentiated_delivery_removed():
+    """旧 differentiated_delivery 目录已整体删除（已 rename 到 experience_assurance）。"""
+    old_dir = Path(_ROOT) / "skills" / "differentiated_delivery"
+    assert not old_dir.exists(), "旧 differentiated_delivery 目录未清理"
+    new_dir = Path(_ROOT) / "skills" / "experience_assurance"
+    assert (new_dir / "SKILL.md").exists(), "新 experience_assurance SKILL.md 缺失"
+    assert (new_dir / "references" / "assurance_parameters.md").exists(), (
+        "assurance_parameters.md 缺失"
+    )
 
 
 def test_ce_insight_core_importable():
@@ -926,7 +945,7 @@ def test_chat_handler_per_source_reasoning_isolation():
             event="ReasoningContentDelta",
             agent_id="provisioning_delivery",
             agent_name="provisioning_delivery",
-            reasoning_content="当前挂载的技能是 differentiated_delivery,有一个脚本 render.py。",
+            reasoning_content="当前挂载的技能是 experience_assurance,有一个脚本 experience_assurance.py。",
         ),
         # wifi 继续,补完被 delivery 打断的话
         _FakeEvent(
@@ -974,12 +993,12 @@ def test_chat_handler_per_source_reasoning_isolation():
 
     # 关键断言 1: wifi 的内容含完整的 "透传产出",没被切断
     assert "透传产出" in wifi_content, f"wifi 的思考应含完整的'透传产出',实际: {wifi_content!r}"
-    # 关键断言 2: delivery 的内容含完整的 "differentiated_delivery"
-    assert "differentiated_delivery" in delivery_content, (
-        f"delivery 的思考应含 'differentiated_delivery',实际: {delivery_content!r}"
+    # 关键断言 2: delivery 的内容含完整的 "experience_assurance"
+    assert "experience_assurance" in delivery_content, (
+        f"delivery 的思考应含 'experience_assurance',实际: {delivery_content!r}"
     )
     # 关键断言 3: wifi 的块里不能混进 delivery 的内容
-    assert "differentiated_delivery" not in wifi_content, (
+    assert "experience_assurance" not in wifi_content, (
         f"wifi 思考块污染了 delivery 的内容: {wifi_content!r}"
     )
     # 关键断言 4: delivery 的块里不能混进 wifi 特有的内容
@@ -1244,7 +1263,7 @@ def test_localskills_loads_all():
         "goal_parsing", "plan_design", "plan_review",
         "cei_pipeline", "cei_score_query",
         "fault_diagnosis", "remote_optimization",
-        "differentiated_delivery", "wifi_simulation",
+        "experience_assurance", "wifi_simulation",
         "insight_plan", "insight_decompose", "insight_query",
         "insight_nl2code", "insight_reflect", "insight_report",
     }
@@ -1291,7 +1310,7 @@ def test_create_team_structure():
         elif m.name == "provisioning_wifi":
             assert skill_names == {"wifi_simulation"}
         elif m.name == "provisioning_delivery":
-            assert skill_names == {"differentiated_delivery"}
+            assert skill_names == {"experience_assurance"}
         elif m.name == "provisioning_cei_chain":
             assert skill_names == {
                 "cei_pipeline",

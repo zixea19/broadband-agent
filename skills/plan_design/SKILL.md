@@ -67,7 +67,7 @@ description: "方案设计：根据用户画像或洞察摘要，生成 5 段式
 | 方案段落 | 对应 Skill | 必填参数（来自 Skill SKILL.md 声明的 schema） |
 |---|---|---|
 | WIFI 仿真方案 | `wifi_simulation` | 无（Skill 内部自驱 4 步） |
-| 差异化承载方案 | `differentiated_delivery` | `slice_type, target_app, whitelist, bandwidth_guarantee_mbps` |
+| 差异化承载方案 | `experience_assurance` | `slice_type, target_app, whitelist, bandwidth_guarantee_mbps`（业务字段，Provisioning 层按 `experience_assurance/references/assurance_parameters.md` 映射到 FAN CLI 参数 `ne-id / service-port-index / policy-profile / onu-res-id / app-id`） |
 | CEI 配置方案 | `cei_pipeline` | `weights` (8 维度 CSV 字符串) |
 | 故障诊断方案 | `fault_diagnosis` | `scenario`（`query-type` / `query-value` 由 Provisioning 推导，不写入方案段落） |
 | 远程闭环处置方案 | `remote_optimization` | `strategy, rectification_method, operation_time` |
