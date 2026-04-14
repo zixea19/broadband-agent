@@ -487,6 +487,17 @@ async def _adapt_body(
                         agg.render_blocks.append(rb)
                         yield format_sse("render", rb), agg
 
+                    # insight_report 产出 markdown 时，额外下发一个 `report` 事件。
+                    # 与前面的 render(markdownReport=...) 冗余发送，供前端 debug 对比
+                    # （前端可以同时消费两条通道，或只看一条）。
+                    # - render 事件仍然入 agg.render_blocks，保留持久化 + 历史回放
+                    # - report 事件是纯过程性调试通道，不入库、不影响 render_blocks
+                    report_payload = _emit_insight_report_payload(
+                        skill_name, result_raw, sub_step_id
+                    )
+                    if report_payload is not None:
+                        yield format_sse("report", report_payload), agg
+
                 continue
 
             # ── step_end ──────────────────────────────────────────────────
@@ -683,6 +694,38 @@ def _emit_insight_render(
         }]
 
     return []
+
+
+def _emit_insight_report_payload(
+    skill_name: str,
+    result_raw: Any,
+    sub_step_id: str,
+) -> Optional[dict]:
+    """为 `insight_report` skill 完成构造独立 `report` SSE 事件的 payload。
+
+    与同一时刻发出的 render(markdownReport=...) 冗余发送，前端可对比两条通道
+    （debug 用途）。其它 skill（含 insight_query）返回 None，不触发该事件。
+
+    返回 payload 结构：
+        {
+            "subStepId": "<关联 sub_step>",
+            "source": "insight_report",
+            "markdownReport": "<原始 Markdown 文本>"
+        }
+    """
+    if skill_name != "insight_report":
+        return None
+    parsed = _parse_stdout(result_raw)
+    if parsed is None:
+        return None
+    markdown = parsed if isinstance(parsed, str) else str(parsed)
+    if not markdown.strip():
+        return None
+    return {
+        "subStepId": sub_step_id,
+        "source": "insight_report",
+        "markdownReport": markdown,
+    }
 
 
 def _build_insight_conclusion(description: Any, significance: float) -> str:
