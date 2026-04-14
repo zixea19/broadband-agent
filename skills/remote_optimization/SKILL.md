@@ -148,6 +148,23 @@ Provisioning Agent 调用本 Skill 时 `get_skill_script` 建议显式传 `timeo
 
 未完成部署时脚本会以结构化 JSON 返回 `status=failed, stage=deployment_check`，不会 crash。
 
+## 方案字段映射（plan_design → CLI 参数）
+
+Provisioning 从 `远程优化：` 段落提取以下字段并按此表翻译为 CLI 参数：
+
+| 方案字段 | 值 | CLI 映射 |
+|---|---|---|
+| `远程优化触发时间` | `闲时` | `--strategy idle` |
+| `远程优化触发时间` | `立即` | `--strategy immediate` |
+| `远程优化触发时间` | `定时` | `--strategy scheduled`（须补 `--operation-time`） |
+| `远程网关重启：True` | — | 整改方式编号 `1` |
+| `远程WIFI信道切换：True` | — | 整改方式编号 `2` |
+| `远程WIFI功率调优：True` | — | 整改方式编号 `3,4`（2.4G + 5G 合并） |
+
+整改方式合并规则：将所有值为 `True` 的字段对应编号合并 → `--rectification-method "<编号逗号列表>"`。
+
+例：`远程网关重启：False`，`远程WIFI信道切换：True`，`远程WIFI功率调优：True` → `--rectification-method "2,3,4"`
+
 ## 禁止事项
 
 - ❌ 不做业务规则推断（整改方式组合 / 执行策略由 PlanningAgent 在方案段落里决定）

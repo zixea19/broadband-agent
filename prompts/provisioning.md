@@ -44,13 +44,41 @@
 
 按 schema 从方案段落逐项对齐。方案段落里的业务字段已由 Planning 对齐到 schema，**直接对号入座**。
 
-示例（CEI 段落 → `cei_pipeline` schema）：
+示例 1（CEI体验感知段落 → `cei_pipeline` schema）：
 ```
 方案段落:
-- 权重配置: ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2
+CEI体验感知：
+    CEI模型：直播模型
+    CEI粒度：分钟级
+    CEI阈值：70分
+
+提参过程：
+  - CEI模型："直播模型" → 查预设表 → ServiceQualityWeight:40,WiFiNetworkWeight:25,...
+  - CEI阈值："70分" → 提取数字 70 → --threshold 70
+
+CLI args (cei_pipeline):
+["--weights", "ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2"]
+
+CLI args (cei_score_query):
+["--threshold", "70"]
+```
+
+示例 2（远程优化段落 → `remote_optimization` schema）：
+```
+方案段落:
+远程优化：
+    远程优化触发时间：闲时
+    远程WIFI信道切换：True
+    远程网关重启：False
+    远程WIFI功率调优：True
+
+提参过程：
+  - 触发时间："闲时" → --strategy idle
+  - 信道切换:True → 编号 2；网关重启:False → 跳过；功率调优:True → 编号 3,4
+  - 合并整改编号 → --rectification-method "2,3,4"
 
 CLI args:
-["--weights", "ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2"]
+["--strategy", "idle", "--rectification-method", "2,3,4"]
 ```
 
 **缺失项处理**（按优先级）：从关键画像推导 → 从原始用户目标推导 → 用 schema 声明的默认值 → 以上都不行则向用户追问（场景 3 常见）。

@@ -118,6 +118,21 @@ Provisioning Agent 调用本 Skill 时 `get_skill_script` 建议显式传 `timeo
 
 未完成部署时脚本应以结构化 JSON 返回 `status=failed, stage=deployment_check`，不要 crash（与同族 FAE Skill 的降级行为一致）。
 
+## 方案字段映射（plan_design → CLI 参数）
+
+Provisioning 从 `差异化承载：` 段落提取以下字段并按此表翻译为 CLI 参数：
+
+| 方案字段 | 值 | CLI 映射 |
+|---|---|---|
+| `差异化wifi切片` | `False` | 整段跳过，不派发本 Skill |
+| `差异化wifi切片` | `True` | 继续提取其余字段 |
+| `APP Flow` | `True` | `slice_type=appflow_traffic_shaping` → `--policy-profile` 选流量成型策略 |
+| `APP Flow` | `False` | `slice_type=application_slice` → `--policy-profile` 选应用切片策略 |
+| `保障应用` | `<app_name>` | → `--target-app <app_name>` |
+| `应用策略` | `<profile>` | → `--policy-profile <profile>`（如 `limit-speed-1m` / `assurance-app-slice`） |
+
+注：`ne-id` / `service-port-index` / `onu-res-id` / `app-id` 等设备级 UUID 参数仍从 `references/assurance_parameters.md` 按设备 mock 表或真实画像查找，方案字段不包含此类参数。
+
 ## 禁止事项
 
 - ❌ 不做业务规则推断（`保障应用 / 策略选择` 由 PlanningAgent 在方案段落决定，业务 → UUID 映射由 Provisioning 按 references 执行）

@@ -138,6 +138,26 @@ python fault_diagnosis.py --scenario LIVE_STUTTERING --query-type ontResId --que
 
 未完成部署时脚本应以结构化 JSON 返回 `status=failed, stage=deployment_check`，不要 crash（与同族 FAE Skill 的降级行为一致）。
 
+## 方案字段映射（plan_design → CLI 参数）
+
+Provisioning 从 `故障诊断：` 段落提取以下字段并按此表翻译为 CLI 参数：
+
+**诊断场景 → `--scenario` 枚举值**
+
+| 方案字段值（中文）| CLI 枚举值 |
+|---|---|
+| `直播卡顿` | `LIVE_STUTTERING` |
+| `游戏卡顿` | `GAME_STUTTERING` |
+| `无法上网` | `NETWORK_ACCESS_FAILURE` |
+| `上网慢` | `NETWORK_ACCESS_SLOW` |
+
+**偶发卡顿定界字段**
+
+| 方案字段 | 值 | 处理方式 |
+|---|---|---|
+| `偶发卡顿定界` | `True` | 若脚本支持 `--intermittent-diagnosis` flag 则传入；否则记录在状态行供工程师参考 |
+| `偶发卡顿定界` | `False` | 不传该 flag |
+
 ## 禁止事项
 
 - ❌ 不做业务规则推断（`scenario` 由方案段落决定，`query-type/query-value` 由 Provisioning 从上一步推导）

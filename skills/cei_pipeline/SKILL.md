@@ -133,6 +133,21 @@ Provisioning Agent 调用本 Skill 时 `get_skill_script` 建议显式传 `timeo
 
 未完成部署时脚本应以结构化 JSON 返回 `status=failed, stage=deployment_check`，不要 crash（与同族 FAE / FAN Skill 的降级行为一致）。
 
+## 方案字段映射（plan_design → CLI 参数）
+
+Provisioning 从 `CEI体验感知：` 段落提取 `CEI模型` 字段，按此表查找预设权重 CSV 并翻译为 `--weights` 参数：
+
+**CEI模型名 → `--weights` 预设速查表**
+
+| CEI模型（方案字段值）| `--weights` CSV 值 |
+|---|---|
+| `直播模型` | `ServiceQualityWeight:40,WiFiNetworkWeight:25,StabilityWeight:15,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:5,ODNWeight:3,OLTKPIWeight:2` |
+| `视频模型` | `ServiceQualityWeight:30,WiFiNetworkWeight:20,StabilityWeight:15,STAKPIWeight:10,GatewayKPIWeight:10,RateWeight:5,ODNWeight:5,OLTKPIWeight:5` |
+| `游戏模型` | `ServiceQualityWeight:20,WiFiNetworkWeight:20,StabilityWeight:25,STAKPIWeight:5,GatewayKPIWeight:15,RateWeight:15,ODNWeight:0,OLTKPIWeight:0` |
+| `VVIP模型` | `ServiceQualityWeight:25,WiFiNetworkWeight:15,StabilityWeight:25,STAKPIWeight:5,GatewayKPIWeight:5,RateWeight:15,ODNWeight:5,OLTKPIWeight:5` |
+
+**CEI阈值**：`CEI阈值：70分` → 提取数字 `70` → `cei_score_query` 的 `--threshold 70`（本 Skill `cei_pipeline` 不使用阈值参数，阈值由 Provisioning 在后续 `cei_score_query` 步骤中使用）。
+
 ## 禁止事项
 
 - ❌ 不做业务规则推断（权重组合由 PlanningAgent 在方案段落里决定）
