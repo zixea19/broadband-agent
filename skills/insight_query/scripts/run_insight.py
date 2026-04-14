@@ -170,10 +170,17 @@ def run(payload_json: str) -> str:
     except Exception as exc:
         return _err(f"fix_query_config 失败: {type(exc).__name__}: {exc}")
 
+    # 兜底：fixer 意外清空 measures 时还原为原始值，确保 SQL 带聚合列
+    if not fixed_config.get("measures"):
+        fixed_config["measures"] = query_config.get("measures", [])
+
     # 2. 从**修复后**的 config 推导默认的 value_columns / group_column
     #    （用 fixed_config 而非 query_config，确保 query_fixer 的字段替换被同步，
     #    避免后续 NEEDS_GROUP 检查时拿到原始字段名而 df 列名是修复后的，导致误报）
     default_value_cols = [m.get("name") for m in fixed_config.get("measures", []) if m.get("name")]
+    # 兜底：fixer 清空 measures 时，回退到原始 query_config 的 measures
+    if not default_value_cols:
+        default_value_cols = [m.get("name") for m in query_config.get("measures", []) if m.get("name")]
     default_group_col = fixed_config.get("breakdown", {}).get("name", "")
 
     value_columns = payload.get("value_columns") or default_value_cols
