@@ -42,12 +42,14 @@ _IMAGES_DIR = Path(__file__).resolve().parents[1] / "data" / "images"
 class StepAggregate:
     step_id: str
     title: str
+    # 有序渲染块：thinking / sub_step / text，流式过程中实时 append，落库后原样返回给前端。
+    # 前端 rebuildBlocks 直接用这个数组，无需从 subSteps 重建，历史回放与流式展示完全一致。
+    items: list = field(default_factory=list)
+    # subSteps 保留用于向后兼容（旧前端降级渲染 / 前端计数显示）
     sub_steps: list = field(default_factory=list)
     # SubAgent 本身输出的 assistant content（如 InsightAgent 的阶段 marker 文本）
-    # 对应 SSE 事件：text { delta, stepId }
     text_content: str = ""
-    # 当前 subStep 启动前积累的 thinking 缓冲；ToolCallStarted 时 snapshot 到 subStep，
-    # ToolCallCompleted 后重置为 ""，不直接落库（落库单位是 subStep.preThinkingContent）
+    # 当前 subStep 启动前积累的 thinking 缓冲；ToolCallStarted 时 flush 进 items，然后重置
     pending_thinking: str = ""
 
 
@@ -201,7 +203,6 @@ async def _adapt_body(
     thinking_end: Optional[float] = None
     skill_start_times: dict[str, list] = {}
     skill_start_args: dict[str, list] = {}   # key -> [call_args, ...]
-    skill_start_thinking: dict[str, list[str]] = {}  # key -> [pending_thinking, ...]
 
     # ── step 路由注册表 ─────────────────────────────────────────────────────
     # agno Team coordinate 模式下，Orchestrator 可能连发多个 delegate_task_to_member
@@ -405,13 +406,15 @@ async def _adapt_body(
                     "scriptPath": args.get("script_path", ""),
                     "callArgs": args.get("args", []),
                 })
-                # snapshot 当前 pending_thinking 到 skill_start_thinking，并重置缓冲
+                # pending_thinking → items thinking 块，然后重置缓冲
                 step_for_evt_start = _step_for_event(event, leader=False)
-                skill_start_thinking.setdefault(key, [])
-                skill_start_thinking[key].append(
-                    step_for_evt_start.pending_thinking if step_for_evt_start is not None else ""
-                )
-                if step_for_evt_start is not None:
+                if step_for_evt_start is not None and step_for_evt_start.pending_thinking:
+                    step_for_evt_start.items.append({
+                        "type": "thinking",
+                        "content": step_for_evt_start.pending_thinking,
+                        "startedAt": 0,
+                        "endedAt": 0,
+                    })
                     step_for_evt_start.pending_thinking = ""
 
                 # ── trace: tool_invoke ────────────────────────────────
@@ -439,12 +442,6 @@ async def _adapt_body(
                 if not args_list:
                     skill_start_args.pop(key, None)
 
-                # 取出 snapshot 的 preThinkingContent
-                thinking_list = skill_start_thinking.get(key, [])
-                pre_thinking = thinking_list.pop(0) if thinking_list else ""
-                if not thinking_list:
-                    skill_start_thinking.pop(key, None)
-
                 tool = getattr(event, "tool", None)
                 result_raw = getattr(tool, "result", None) or ""
                 stdout, stderr = _extract_stdout_stderr(result_raw)
@@ -463,7 +460,6 @@ async def _adapt_body(
                 sub = {
                     "subStepId": sub_step_id,
                     "name": skill_name,
-                    "preThinkingContent": pre_thinking,
                     "scriptPath": call_info.get("scriptPath", ""),
                     "callArgs": call_info.get("callArgs", []),
                     "stdout": stdout[:500],
@@ -473,6 +469,8 @@ async def _adapt_body(
                 }
                 if step_for_evt is not None:
                     step_for_evt.sub_steps.append(sub)
+                    # sub_step 块追加到有序 items 数组
+                    step_for_evt.items.append({"type": "sub_step", "data": sub})
 
                 yield format_sse("sub_step", {"stepId": step_id, **sub}), agg
 

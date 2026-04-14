@@ -111,15 +111,19 @@ async def send_message(conv_id: str, body: SendMessageRequest):
             # 落库 assistant 消息
             if agg is not None:
                 try:
-                    steps_data = [
-                        {
+                    steps_data = []
+                    for s in agg.steps:
+                        # 最终 items：已积累的 thinking/sub_step 块 + 尾部 text 块（如有）
+                        items = list(s.items)
+                        if s.text_content.strip():
+                            items.append({"type": "text", "content": s.text_content})
+                        steps_data.append({
                             "stepId": s.step_id,
                             "title": s.title,
-                            "subSteps": s.sub_steps,
+                            "items": items,
+                            "subSteps": s.sub_steps,   # 保留，供旧前端降级 / 计数
                             "textContent": s.text_content,
-                        }
-                        for s in agg.steps
-                    ]
+                        })
                     await repo.insert_assistant_message(
                         conv_id=conv_id,
                         content=agg.content,
