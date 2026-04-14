@@ -117,6 +117,7 @@ async def send_message(conv_id: str, body: SendMessageRequest):
                             "title": s.title,
                             "subSteps": s.sub_steps,
                             "textContent": s.text_content,
+                            "thinkingContent": s.thinking_content,
                         }
                         for s in agg.steps
                     ]

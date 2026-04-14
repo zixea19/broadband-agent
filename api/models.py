@@ -73,6 +73,7 @@ class Step(BaseModel):
     # SubAgent 本身输出的 assistant content（流式到达时以 text(stepId) 事件推送；
     # 历史回放时一次性随 Step 下发，供前端补绘阶段文本）
     textContent: str = ""
+    thinkingContent: str = ""
 
 
 # ─── 右侧渲染块 ───────────────────────────────────────────────────────────────

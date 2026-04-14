@@ -46,6 +46,7 @@ class StepAggregate:
     # SubAgent 本身输出的 assistant content（如 InsightAgent 的阶段 marker 文本）
     # 对应 SSE 事件：text { delta, stepId }
     text_content: str = ""
+    thinking_content: str = ""
 
 
 @dataclass
@@ -282,10 +283,12 @@ async def _adapt_body(
                         thinking_start = time.monotonic()
                     thinking_end = time.monotonic()
                     agg.thinking_content += delta
-                    payload: dict = {"delta": delta}
                     step_for_evt = _step_for_event(event, leader)
                     if step_for_evt is not None:
-                        payload["stepId"] = step_for_evt.step_id
+                        step_for_evt.thinking_content += delta
+                        payload: dict = {"delta": delta, "stepId": step_for_evt.step_id}
+                    else:
+                        payload = {"delta": delta}
                     yield format_sse("thinking", payload), agg
                     # source 切换 → 旧段先 flush 再开新段
                     if sid and sid != reasoning_source:
@@ -302,10 +305,12 @@ async def _adapt_body(
                         thinking_start = time.monotonic()
                     thinking_end = time.monotonic()
                     agg.thinking_content += r_delta
-                    payload = {"delta": r_delta}
                     step_for_evt = _step_for_event(event, leader)
                     if step_for_evt is not None:
-                        payload["stepId"] = step_for_evt.step_id
+                        step_for_evt.thinking_content += r_delta
+                        payload = {"delta": r_delta, "stepId": step_for_evt.step_id}
+                    else:
+                        payload = {"delta": r_delta}
                     yield format_sse("thinking", payload), agg
                     if sid and sid != reasoning_source:
                         _flush_reasoning()
