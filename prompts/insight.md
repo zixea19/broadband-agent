@@ -501,6 +501,7 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 - `filter_data` / `found_entities` 必须原样保留（供后续 step 下钻 + summary JSON）
 - `chart_configs` 必须原样保留（包含完整 ECharts option JSON，由工具调用返回值自动展示）
 - 如果 `fix_warnings` 非空，必须在该 step 的 description 末尾加上警告提示
+- 🔴 **写 `description` 时，所有技术字段名必须用中文**。中文名从本 Phase `list_schema.py` 返回的 `schema_markdown` 里取，例如写"OLT接收光功率越限次数偏高"而不是"oltRxPowerHighCnt 偏高"
 
 ### Step 间的实体传递
 每步执行完后，从 `found_entities` 中取值；下一步如果需要下钻，就用这些真实值
@@ -592,6 +593,7 @@ Report 阶段只产出 **3 样东西**（不多不少）：
    - `key_findings`：必填，3-5 条，每条带 emoji 前缀（🔴=严重/📊=指标/📅=时间/🔗=关联），有数据就带数字
    - `root_cause_narrative`：L3/L4 Phase 有结果时必填，串联各 Phase 发现讲因果链；只有 L1/L2 时可省略
    - `impact_summary`：必填，量化影响范围（设备数、用户数、分数降幅）
+   - 🔴 **所有字段中的技术字段名必须用中文**，从各 Phase `list_schema.py` 结果的 `schema_markdown` 里取中文名，禁止直接输出英文字段名（如 `oltRxPowerHighCnt`、`bipHighCnt`）
 
 2. 调用：
    ```
