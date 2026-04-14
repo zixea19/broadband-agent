@@ -143,20 +143,21 @@ async def adapt(
         message_id=str(uuid.uuid4()),
         conversation_id=conv_id,
     )
-    api_log = logger.bind(channel="api")
-    with logger.contextualize(msg_id=agg.message_id):
-        api_log.info(f"adapt() 启动 msg_id={agg.message_id}")
-        try:
-            async for item in _adapt_body(
-                conv_id, raw_stream, agg, tracer, db_session_id, user_msg_id
-            ):
-                yield item
-        finally:
-            api_log.info(
-                f"adapt() 结束 status={agg.status} "
-                f"content_len={len(agg.content)} thinking_len={len(agg.thinking_content)} "
-                f"steps={len(agg.steps)} renders={len(agg.render_blocks)}"
-            )
+    # logger.bind() 替代 logger.contextualize()，规避 Windows asyncio GeneratorExit
+    # 在不同 Task Context 触发时 ContextVar.reset() 抛 ValueError 的问题。
+    api_log = logger.bind(channel="api", msg_id=agg.message_id)
+    api_log.info(f"adapt() 启动 msg_id={agg.message_id}")
+    try:
+        async for item in _adapt_body(
+            conv_id, raw_stream, agg, tracer, db_session_id, user_msg_id
+        ):
+            yield item
+    finally:
+        api_log.info(
+            f"adapt() 结束 status={agg.status} "
+            f"content_len={len(agg.content)} thinking_len={len(agg.thinking_content)} "
+            f"steps={len(agg.steps)} renders={len(agg.render_blocks)}"
+        )
 
 
 def _source_id(event: Any, leader: bool) -> Optional[str]:

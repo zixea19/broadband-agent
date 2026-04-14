@@ -88,25 +88,28 @@ async def send_message(conv_id: str, body: SendMessageRequest):
         )
         started_at = time.monotonic()
         chunk_count = 0
-        # conv_id 上下文贯穿整个 SSE 流（event_adapter 内再叠加 msg_id）
-        with logger.contextualize(conv_id=conv_id):
-            try:
-                async for chunk, current_agg in adapter:
-                    agg = current_agg
-                    chunk_count += 1
-                    yield chunk
-            except Exception as exc:
-                _api_log.exception("SSE 生成异常")
-                from api.sse import format_sse
-                yield format_sse("error", {"message": f"服务器内部错误：{exc}"})
+        # logger.bind() 替代 logger.contextualize()：
+        # contextualize() 用 ContextVar.reset() 清理，在 Windows asyncio 下 GeneratorExit
+        # 会在不同 Task Context 触发，导致 "Token was created in a different Context" ValueError。
+        # bind() 返回绑定字段的 logger 实例，无 ContextVar，天然规避跨 Task 清理问题。
+        _sse_log = _api_log.bind(conv_id=conv_id)
+        try:
+            async for chunk, current_agg in adapter:
+                agg = current_agg
+                chunk_count += 1
+                yield chunk
+        except Exception as exc:
+            _sse_log.exception("SSE 生成异常")
+            from api.sse import format_sse
+            yield format_sse("error", {"message": f"服务器内部错误：{exc}"})
 
-            elapsed_ms = int((time.monotonic() - started_at) * 1000)
-            msg_id = agg.message_id if agg else "-"
-            status = agg.status if agg else "unknown"
-            _api_log.bind(conv_id=conv_id, msg_id=msg_id).info(
-                f"send_message → SSE 流结束 chunks={chunk_count} "
-                f"elapsed_ms={elapsed_ms} status={status}"
-            )
+        elapsed_ms = int((time.monotonic() - started_at) * 1000)
+        msg_id = agg.message_id if agg else "-"
+        status = agg.status if agg else "unknown"
+        _sse_log.bind(msg_id=msg_id).info(
+            f"send_message → SSE 流结束 chunks={chunk_count} "
+            f"elapsed_ms={elapsed_ms} status={status}"
+        )
 
             # 落库 assistant 消息
             if agg is not None:
