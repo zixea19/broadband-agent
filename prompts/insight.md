@@ -546,7 +546,7 @@ Report 阶段只产出 **3 样东西**（不多不少）：
              "significance": 0.41,
              "description": "...",
              "found_entities": {"portUuid": [...]},
-             "chart_configs": {...}
+             "chart_configs": {...}    // 🔴 必填：从该 step 对应的 run_insight.py stdout 原样复制，禁止省略
            }
          ],
          "reflection": {"choice": "A", "reason": "..."}
