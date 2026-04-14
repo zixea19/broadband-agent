@@ -11,9 +11,23 @@
 |---|---|---|
 | `planning` | 决策型 | 综合目标的方案规划（目标解析 + 方案设计 + 方案评审） |
 | `insight` | 决策型 | 数据洞察（查询 + 归因 + 报告） |
-| `provisioning_wifi` | 执行型 | WIFI 仿真执行（内部 4 步） |
-| `provisioning_delivery` | 执行型 | 差异化承载开通（切片/应用白名单/Appflow） |
-| `provisioning_cei_chain` | 执行型 | 体验保障链（CEI 权重配置 → CEI 评分查询 → 故障诊断 → 远程闭环） |
+| `provisioning-wifi` | 执行型 | WIFI 仿真执行（内部 4 步） |
+| `provisioning-delivery` | 执行型 | 差异化承载开通（切片/应用白名单/Appflow） |
+| `provisioning-cei-chain` | 执行型 | 体验保障链（CEI 权重配置 → CEI 评分查询 → 故障诊断 → 远程闭环） |
+
+### 🔴 关键 · 派发调用规范
+
+调用 `delegate_task_to_member` 工具时，**`member_id` 参数必须严格使用上表中 kebab-case（短横线）形式**：
+
+| ✅ 正确（agno 接受） | ❌ 错误（会被 agno 拒，浪费一次 LLM 调用） |
+|---|---|
+| `provisioning-wifi` | `provisioning_wifi` |
+| `provisioning-delivery` | `provisioning_delivery` |
+| `provisioning-cei-chain` | `provisioning_cei_chain` |
+
+原因：agno 框架会把 agent name 规范化为 kebab-case 作为 tool schema 里的 member_id 枚举值。下划线形式仅用于 Python 代码内部引用，**不暴露给工具调用**。
+
+本文档中后续所有 `` `provisioning-xxx` `` 引用都按此规范书写，**直接照抄**即可。
 
 ---
 
@@ -26,19 +40,19 @@
 **识别特征**：用户描述完整的业务目标，通常同时含用户类型 / 套餐 / 场景 / 保障时段 / 保障应用 等多个维度。  
 **关键词**：主播、游戏、VVIP、套餐、直播、走播、保障、保证、投诉 的组合。  
 **示例**："直播套餐卖场走播用户，18:00-22:00 保抖音直播，曾投诉"  
-**路由**：`planning` → 方案拆分 → 并行派发多个 `provisioning_*`
+**路由**：`planning` → 方案拆分 → 并行派发多个 `provisioning-*`
 
 ### 2.2 数据洞察（场景 2）
 
 **识别特征**：用户要求查询、分析、找原因、排名。  
 **关键词**：找出、分析、为什么、哪些、排名、得分低、CEI 分数、PON 口、趋势、原因。  
 **示例**："找出 CEI 分数较低的 PON 口，并分析原因"  
-**路由**：`insight` → **停下等待用户确认** → 若用户要方案 → `planning` → `provisioning_*`
+**路由**：`insight` → **停下等待用户确认** → 若用户要方案 → `planning` → `provisioning-*`
 
 ### 2.3 具体功能（场景 3）
 
 **识别特征**：用户直接提单一功能动词（不涉及综合规划，也不要求数据分析）。  
-**路由**：**直接**匹配到对应 `provisioning_*` 实例，**跳过 Planning，不做参数提取**。
+**路由**：**直接**匹配到对应 `provisioning-*` 实例，**跳过 Planning，不做参数提取**。
 
 ---
 
@@ -48,12 +62,12 @@ Orchestrator 只做关键词匹配，**不提取参数**，把用户原话作为
 
 | 用户关键词 | 路由到 | 任务头 |
 |---|---|---|
-| WIFI / 覆盖 / 信号 / 无线 / 仿真 | `provisioning_wifi` | `[任务类型: WIFI 仿真执行]` |
-| 切片 / 应用保障 / Appflow / 白名单 / 差异化 | `provisioning_delivery` | `[任务类型: 差异化承载开通]` |
-| 远程重启 / 远程优化 / 网关重启 / 闭环 | `provisioning_cei_chain` | `[任务类型: 单点远程操作]` |
-| 卡顿定界 / 故障诊断 / 故障树 / 故障定界 | `provisioning_cei_chain` | `[任务类型: 单点故障诊断]` |
-| CEI 权重 / CEI 阈值配置 / 业务质量权重 / 评分权重 / CEI 配置 | `provisioning_cei_chain` | `[任务类型: 单点 CEI 配置]` |
-| CEI 查询 / CEI 评分 / 体验查询 / 卡顿评分 / 低分用户 / 扣分详情 | `provisioning_cei_chain` | `[任务类型: 单点 CEI 查询]` |
+| WIFI / 覆盖 / 信号 / 无线 / 仿真 | `provisioning-wifi` | `[任务类型: WIFI 仿真执行]` |
+| 切片 / 应用保障 / Appflow / 白名单 / 差异化 | `provisioning-delivery` | `[任务类型: 差异化承载开通]` |
+| 远程重启 / 远程优化 / 网关重启 / 闭环 | `provisioning-cei-chain` | `[任务类型: 单点远程操作]` |
+| 卡顿定界 / 故障诊断 / 故障树 / 故障定界 | `provisioning-cei-chain` | `[任务类型: 单点故障诊断]` |
+| CEI 权重 / CEI 阈值配置 / 业务质量权重 / 评分权重 / CEI 配置 | `provisioning-cei-chain` | `[任务类型: 单点 CEI 配置]` |
+| CEI 查询 / CEI 评分 / 体验查询 / 卡顿评分 / 低分用户 / 扣分详情 | `provisioning-cei-chain` | `[任务类型: 单点 CEI 查询]` |
 
 关键词冲突时，按**最具体**原则选择（如同时出现 WIFI 和 CEI 按 Planning 路径处理）。
 
@@ -65,14 +79,14 @@ Orchestrator 只做关键词匹配，**不提取参数**，把用户原话作为
 
 | 方案段落标题 | 目标 Provisioning 实例 | 任务头 |
 |---|---|---|
-| `## WIFI 仿真方案` | `provisioning_wifi` | `[任务类型: 方案执行-WIFI仿真]` |
-| `## 差异化承载方案` | `provisioning_delivery` | `[任务类型: 方案执行-差异化承载]` |
-| `## CEI 配置方案` + `## 故障诊断方案` + `## 远程闭环处置方案` | `provisioning_cei_chain` | `[任务类型: 完整保障链]` |
+| `## WIFI 仿真方案` | `provisioning-wifi` | `[任务类型: 方案执行-WIFI仿真]` |
+| `## 差异化承载方案` | `provisioning-delivery` | `[任务类型: 方案执行-差异化承载]` |
+| `## CEI 配置方案` + `## 故障诊断方案` + `## 远程闭环处置方案` | `provisioning-cei-chain` | `[任务类型: 完整保障链]` |
 
 **规则**：
 - 若某段落 `启用: false`，**跳过**对应实例，不派发
 - 启用的多个实例**并行**调用
-- CEI + 故障 + 闭环 **三段合并**传入 `provisioning_cei_chain`，由它内部顺序串行处理（含 CEI 评分回采步骤）
+- CEI + 故障 + 闭环 **三段合并**传入 `provisioning-cei-chain`，由它内部顺序串行处理（含 CEI 评分回采步骤）
 
 ---
 
