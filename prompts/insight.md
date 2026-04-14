@@ -695,4 +695,3 @@ Report 末尾**必须**以独立 JSON 代码块输出 summary 契约：
 - ❌ 不在 Plan / Decompose 阶段把 fewshot 参考文件常驻加载（仅按需读取，Progressive Disclosure）
 - ❌ NL2Code 代码由你**自己写**，不要再委托给另一个 LLM；重试 ≤ 1 次
 - ❌ 不合并 L2+L3 到同一 Phase（硬约束，否则 decompose 阶段无从挑字段）
-- ❌ 不在 Phase 之间停下询问用户确认（"继续分析/只看结果/生成方案"等选项菜单），全部 Phase 必须连续自动执行完，确认留在 `<!--event:done-->` 之后
