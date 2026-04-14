@@ -1,6 +1,6 @@
 """
 三元组数据查询服务。
-外网使用 cei_query_mock，内网部署时只需改两行 import。
+使用内网 cei_query 接口；cei_query_mock 保留供离线 / 无内网环境回退。
 """
 
 import logging
@@ -8,13 +8,12 @@ import logging
 import numpy as np
 import pandas as pd
 
-# --- 外网/内网切换点：改这两行即可 ---
-from ce_insight_core.cei_query_mock.api import query_subject_from_single_table
-from ce_insight_core.cei_query_mock.query.models import InsightSubspaceApiModel
+from cei_query.api import query_subject_from_single_table
+from cei_query.query.models import InsightSubspace as InsightSubspaceApiModel
 
-# 内网部署时换为：
-# from cei_query.api import query_subject_from_single_table
-# from cei_query.query.models import InsightSubspace as InsightSubspaceApiModel
+# 外网/离线回退（保留，不删除）：
+# from ce_insight_core.cei_query_mock.api import query_subject_from_single_table
+# from ce_insight_core.cei_query_mock.query.models import InsightSubspaceApiModel
 
 logger = logging.getLogger(__name__)
 

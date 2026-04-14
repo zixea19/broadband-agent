@@ -126,6 +126,10 @@ def run(payload_json: str) -> str:
     except Exception as exc:
         return _err(f"fix_query_config 失败: {type(exc).__name__}: {exc}")
 
+    # 兜底：fixer 意外清空 measures 时还原为原始值，确保 SQL 带聚合列
+    if not fixed_config.get("measures"):
+        fixed_config["measures"] = query_config.get("measures", [])
+
     try:
         dfs = cic.query_subject_pandas(fixed_config, data_path)
     except Exception as exc:
