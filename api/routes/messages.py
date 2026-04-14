@@ -111,45 +111,45 @@ async def send_message(conv_id: str, body: SendMessageRequest):
             f"elapsed_ms={elapsed_ms} status={status}"
         )
 
-            # 落库 assistant 消息
-            if agg is not None:
-                try:
-                    steps_data = []
-                    for s in agg.steps:
-                        # 流结束时 flush 未被 ToolCallStarted 消费的残留缓冲
-                        # （最后一个 Skill 完成后 InsightAgent 可能还有反思/总结文本和 thinking）
-                        items = list(s.items)
-                        if s.pending_text:
-                            items.append({"type": "text", "content": s.pending_text})
-                        if s.pending_thinking:
-                            items.append({
-                                "type": "thinking",
-                                "content": s.pending_thinking,
-                                "startedAt": 0,
-                                "endedAt": 0,
-                            })
-                        steps_data.append({
-                            "stepId": s.step_id,
-                            "title": s.title,
-                            "items": items,
-                            "subSteps": s.sub_steps,   # 保留，供旧前端降级 / 计数
-                            "textContent": s.text_content,
+        # 落库 assistant 消息
+        if agg is not None:
+            try:
+                steps_data = []
+                for s in agg.steps:
+                    # 流结束时 flush 未被 ToolCallStarted 消费的残留缓冲
+                    # （最后一个 Skill 完成后 InsightAgent 可能还有反思/总结文本和 thinking）
+                    items = list(s.items)
+                    if s.pending_text:
+                        items.append({"type": "text", "content": s.pending_text})
+                    if s.pending_thinking:
+                        items.append({
+                            "type": "thinking",
+                            "content": s.pending_thinking,
+                            "startedAt": 0,
+                            "endedAt": 0,
                         })
-                    await repo.insert_assistant_message(
-                        conv_id=conv_id,
-                        content=agg.content,
-                        thinking_content=agg.thinking_content,
-                        thinking_duration_sec=agg.thinking_duration_sec,
-                        steps=steps_data,
-                        render_blocks=agg.render_blocks,
-                        status=agg.status,
-                    )
-                    _api_log.bind(conv_id=conv_id, msg_id=agg.message_id).info(
-                        f"assistant 消息已落库 content_len={len(agg.content)} "
-                        f"steps={len(steps_data)} renders={len(agg.render_blocks)}"
-                    )
-                except Exception:
-                    _api_log.exception("assistant 消息落库失败")
+                    steps_data.append({
+                        "stepId": s.step_id,
+                        "title": s.title,
+                        "items": items,
+                        "subSteps": s.sub_steps,   # 保留，供旧前端降级 / 计数
+                        "textContent": s.text_content,
+                    })
+                await repo.insert_assistant_message(
+                    conv_id=conv_id,
+                    content=agg.content,
+                    thinking_content=agg.thinking_content,
+                    thinking_duration_sec=agg.thinking_duration_sec,
+                    steps=steps_data,
+                    render_blocks=agg.render_blocks,
+                    status=agg.status,
+                )
+                _api_log.bind(conv_id=conv_id, msg_id=agg.message_id).info(
+                    f"assistant 消息已落库 content_len={len(agg.content)} "
+                    f"steps={len(steps_data)} renders={len(agg.render_blocks)}"
+                )
+            except Exception:
+                _api_log.exception("assistant 消息落库失败")
 
     return StreamingResponse(
         sse_generator(),
