@@ -56,10 +56,23 @@ args=['"{\"insight_type\":...}"']
        string 元素被 JSON 编码了第二次
 ```
 
-**如果你看到这个 Pydantic 错误，就是你犯了铁律 1**：
+❌ **错误 3**（list 元素是 Python dict，没有序列化成 string — 和错误 1 同等常见）：
 ```
+args=[{"table": "day", "focus_dimensions": []}]
+      ↑                                       ↑
+      元素是 dict 对象，必须先 json.dumps 成字符串
+```
+
+**如果你看到这些 Pydantic 错误，就是你犯了铁律 1**：
+```
+# args 整体是 string（错误 1）：
 1 validation error for Skills._get_skill_script
 args  Input should be a valid list [type=list_type, input_value='["...', input_type=str]
+
+# args[0] 是 dict（错误 3）：
+1 validation error for Skills._get_skill_script
+args.0
+  Input should be a valid string [type=string_type, input_value={...}, input_type=dict]
 ```
 
 **正确构造步骤**（按这个流程走，不要跳）：
