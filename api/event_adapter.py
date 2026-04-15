@@ -11,6 +11,8 @@ M5 说明：InsightAgent assistant 文本中的 <!--event:xxx--> 阶段标记
          由后端原样透传为 `thinking(stepId="insight")` 事件，
          不在后端做结构化解析——前端自行识别 marker。
          图表/报告仍由脚本 stdout 生成独立 `render` 事件（渐进式）。
+M6 追加：wifi_simulation 单事件聚合 —— 2 PNG + 0/4 JSON 合并为一条
+         renderType="wifi_simulation" 事件，对应 docs/wifi_simulation_redesign.md。
 """
 
 from __future__ import annotations
@@ -513,10 +515,11 @@ async def _adapt_body(
                         message_id=user_msg_id,
                     )
 
-                # wifi_simulation 单独通道：解析 image_paths，拷贝到 data/images/
-                # 每张图发一个独立的 renderType="image" 事件（按 docs/sse-interface-spec.md:216）
+                # wifi_simulation 单独通道：解析 image_paths + data_paths，
+                # 聚合成 **单条** renderType="wifi_simulation" 事件（2 PNG + 0/4 JSON）。
+                # 详见 docs/wifi_simulation_redesign.md §4。
                 if skill_name == "wifi_simulation":
-                    for rb in _emit_wifi_image_renders(agg.message_id, result_raw):
+                    for rb in _emit_wifi_simulation_render(agg.message_id, result_raw):
                         agg.render_blocks.append(rb)
                         yield format_sse("render", rb), agg
 
@@ -744,39 +747,70 @@ def _build_insight_conclusion(description: Any, significance: float) -> str:
     return "；".join(parts) if parts else "洞察分析完成"
 
 
-# ─── wifi_simulation 图片持久化 ───────────────────────────────────────────────
+# ─── wifi_simulation：单事件聚合（2 PNG + 0/4 JSON 内联） ─────────────────────
 
-def _emit_wifi_image_renders(msg_id: str, result_raw: Any) -> list[dict]:
-    """从 wifi_simulation 的 stdout 解析 image_paths，拷贝到 data/images/ 并
-    返回 render_blocks 列表（每张图一个 renderType="image" 条目）。
+def _emit_wifi_simulation_render(msg_id: str, result_raw: Any) -> list[dict]:
+    """把 wifi_simulation 的 stdout 聚合成 **单条** renderType="wifi_simulation"
+    事件，供前端右侧面板渲染一张综合卡片。
 
-    命名策略：`{msg_id}_{idx}.{ext}`，便于历史回看按消息 ID 反查 / 清理。
+    载荷内容：
+      - images[]：PNG 拷贝到 `data/images/` 后对外给 `/api/images/{imageId}`
+      - dataFiles[]：JSON 数据文件读到内存，整份 JSON 内联在 renderData.dataFiles[].content
+        （随 messages.render_blocks 落盘，历史回放直接还原；不新增路由）
+      - stats / summary / mode / preset / gridSize 等元数据原样透传
 
-    容错：源文件不存在或拷贝失败时打 warning 跳过，不阻断主流程。
-    skill 脚本自己的工作区（skills/wifi_simulation/data/run_<uuid>/）可随时清理，
-    本函数拷贝到 `data/images/` 的副本是持久化副本。
+    协议详见 docs/wifi_simulation_redesign.md §4.2。
+
+    容错：任何单项（某张 PNG / 某份 JSON）失败不阻断其它；全失败时返回空 list。
     """
     parsed = _parse_stdout(result_raw)
     if not isinstance(parsed, dict):
         return []
-    images = parsed.get("image_paths") or []
-    if not isinstance(images, list) or not images:
-        return []
 
     api_log = logger.bind(channel="api")
-    render_blocks: list[dict] = []
 
+    images = _collect_wifi_images(msg_id, parsed.get("image_paths") or [], api_log)
+    data_files = _collect_wifi_data_files(msg_id, parsed.get("data_paths") or [], api_log)
+
+    # 无任何图也无数据：不发 render（skill 可能是 error 路径）
+    if not images and not data_files:
+        return []
+
+    render_data: dict[str, Any] = {
+        "mode": parsed.get("mode") or "basic",
+        "preset": parsed.get("preset") or "",
+        "gridSize": parsed.get("grid_size"),
+        "apCount": parsed.get("ap_count"),
+        "targetApCount": parsed.get("target_ap_count"),
+        "summary": parsed.get("summary") or "",
+        "stats": parsed.get("stats") or {},
+        "images": images,
+        "dataFiles": data_files,
+    }
+    api_log.info(
+        f"wifi_simulation render 聚合 mode={render_data['mode']} "
+        f"images={len(images)} dataFiles={len(data_files)}"
+    )
+    return [{"renderType": "wifi_simulation", "renderData": render_data}]
+
+
+def _collect_wifi_images(msg_id: str, items: Any, api_log: Any) -> list[dict]:
+    """把 image_paths 中每张 PNG 拷贝到 data/images/，返回前端可消费的 image 列表。"""
+    if not isinstance(items, list) or not items:
+        return []
     try:
         _IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     except Exception:
         api_log.exception(f"创建图片持久化目录失败: {_IMAGES_DIR}")
         return []
 
-    for idx, item in enumerate(images):
+    out: list[dict] = []
+    for idx, item in enumerate(items):
         if not isinstance(item, dict):
             continue
         src = item.get("path") or ""
         label = item.get("label") or f"图片 {idx + 1}"
+        kind = item.get("kind") or ""
         if not src:
             continue
 
@@ -786,24 +820,69 @@ def _emit_wifi_image_renders(msg_id: str, result_raw: Any) -> list[dict]:
             continue
 
         ext = (src_path.suffix.lstrip(".") or "png").lower()
-        image_id = f"{msg_id}_{idx}"
+        image_id = f"{msg_id}_img_{idx}"
         dest = _IMAGES_DIR / f"{image_id}.{ext}"
-
         try:
             shutil.copy2(src_path, dest)
         except Exception:
             api_log.exception(f"拷贝 wifi image 失败: {src} → {dest}")
             continue
 
-        render_blocks.append({
-            "renderType": "image",
-            "renderData": {
-                "imageId": image_id,
-                "imageUrl": f"/api/images/{image_id}",
-                "title": label,
-                "conclusion": "",
-            },
+        out.append({
+            "imageId": image_id,
+            "imageUrl": f"/api/images/{image_id}",
+            "title": label,
+            "kind": kind,
         })
-        api_log.info(f"wifi image 持久化 → {dest.name} (label={label!r})")
+        api_log.info(f"wifi image 持久化 → {dest.name} (label={label!r} kind={kind!r})")
+    return out
 
-    return render_blocks
+
+def _collect_wifi_data_files(msg_id: str, items: Any, api_log: Any) -> list[dict]:
+    """读取 data_paths 中每份 JSON 矩阵文件，整份内联到 dataFiles[].content。
+
+    大小估算：40×40 grid ≈ 每份 ~25KB，4 份 ~100KB；通过 SSE + 数据库 render_blocks
+    落盘可接受。前端首屏建议仅渲染 stats/summary；展开/下载时再消费 content.data。
+    """
+    if not isinstance(items, list) or not items:
+        return []
+    out: list[dict] = []
+    for idx, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        src = item.get("path") or ""
+        label = item.get("label") or f"数据文件 {idx + 1}"
+        kind = item.get("kind") or ""
+        phase = item.get("phase") or ""
+        if not src:
+            continue
+
+        src_path = Path(src)
+        if not src_path.exists():
+            api_log.warning(f"wifi data 源文件不存在: {src}")
+            continue
+
+        try:
+            with open(src_path, "r", encoding="utf-8") as f:
+                content = _json.load(f)
+        except Exception:
+            api_log.exception(f"解析 wifi data JSON 失败: {src}")
+            continue
+
+        # 从 JSON 内部字段抽摘要，避免前端首屏消费大矩阵
+        stats: dict[str, Any] = {}
+        if isinstance(content, dict):
+            for k in ("mean_rssi", "worst_rssi", "mean_stall_rate", "max_stall_rate", "shape"):
+                if k in content:
+                    stats[k] = content[k]
+
+        out.append({
+            "fileId": f"{msg_id}_data_{idx}",
+            "title": label,
+            "kind": kind,
+            "phase": phase,
+            "stats": stats,
+            "content": content,
+        })
+        api_log.info(f"wifi data 内联 → {src_path.name} (label={label!r} phase={phase!r})")
+    return out
