@@ -221,6 +221,21 @@ def run(payload_json: str) -> str:
     if table_level not in ("day", "minute"):
         return _err(f"table_level 必须是 day/minute，收到: {table_level}")
 
+    # 分钟表必须带 dimensions 过滤，禁止全量扫描
+    if table_level == "minute":
+        dims = query_config.get("dimensions", [[]])
+        is_empty_filter = (
+            not dims
+            or dims == [[]]
+            or all(not group for group in dims)
+        )
+        if is_empty_filter:
+            return _err(
+                "分钟表查询必须在 dimensions 中指定 portUuid 或 gatewayMac 过滤条件，"
+                "禁止全量扫描（数据量过大会导致上下文溢出）。"
+                "请从前序 Phase 的 found_entities 中取实体值后重新调用。"
+            )
+
     data_path = payload.get("data_path") or _resolve_data_path(table_level)
 
     # 1. 修复三元组（query_fixer 可能替换字段名 / breakdown 名 / measures 名）

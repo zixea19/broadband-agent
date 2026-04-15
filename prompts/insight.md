@@ -151,6 +151,12 @@ ABORT 时的正确做法：
 
 无下钻需求时直接用 `"dimensions": [[]]`（空列表，**不是** `[]` 或 `null`）。
 
+🔴 **分钟表（`table_level=minute`）禁止用 `[[]]` 空过滤**：分钟表数据量极大（数十万行），
+不加过滤会撑爆上下文并导致计算超时。分钟表步骤**必须**在 `dimensions` 里带
+`portUuid` 或 `gatewayMac` 的 `IN` 过滤，值来自前序 Phase 的 `found_entities`。
+如果前序 Phase 没有产出 `found_entities`，先补一个天表 `OutstandingMin` 步骤找到实体，
+再进行分钟表下钻。违反此规则时脚本会直接返回 error，不会执行查询。
+
 ### 铁律 5 · 事件 marker 后只跟一句话指针，禁止重复表格
 
 `<!--event:xxx-->` JSON 会被前端**自动渲染为结构化表格**。输出事件后**只允许**跟一句话
