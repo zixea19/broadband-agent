@@ -144,17 +144,17 @@ def _resolve_data_path(table_level: str) -> str:
 
 
 def _repair_collapsed_query_config(payload: dict) -> dict:
-    """json_repair 오류 복구: dimensions 안에 breakdown/measures/payload 필드가 접혀들어간 경우를 수리합니다.
+    """修复 json_repair 结构崩塌：dimensions 内混入了 breakdown/measures/payload 字段的情况。
 
-    재현 패턴:
-        json.loads 실패 → json_repair 가 [[{filter}]] 이후 모든 필드를
-        dimensions 배열 원소로 접어버림.
+    复现模式：
+        json.loads 失败 → json_repair 把 [[{filter}]] 之后的所有字段
+        折叠为 dimensions 数组的元素。
 
-    수리 후:
-        query_config.dimensions = [[{실제 필터}]]
-        query_config.breakdown  = {...}   ← dimensions 에서 복원
-        query_config.measures   = [...]   ← dimensions 에서 복원
-        payload.table_level 등  ← dimensions 에서 복원
+    修复后：
+        query_config.dimensions = [[{实际过滤条件}]]
+        query_config.breakdown  = {...}   ← 从 dimensions 中还原
+        query_config.measures   = [...]   ← 从 dimensions 中还原
+        payload.table_level 等  ← 从 dimensions 中还原
     """
     import logging as _logging
     _log = _logging.getLogger(__name__)
@@ -167,13 +167,13 @@ def _repair_collapsed_query_config(payload: dict) -> dict:
     if not isinstance(dims, list):
         return payload
 
-    # 증상 감지: dimensions 내부에 list 가 아닌 dict 원소가 있으면 접힘 발생
+    # 症状检测：dimensions 内部存在非 list 的 dict 元素，说明发生了折叠
     if not any(isinstance(d, dict) for d in dims):
         return payload
 
     _log.warning(
-        "[run_insight] json_repair 구조 붕괴 감지 — dimensions 내 dict 원소를 복원합니다. "
-        "원본 dimensions 길이=%d", len(dims)
+        "[run_insight] 检测到 json_repair 结构崩塌 — dimensions 内存在 dict 元素，开始还原。"
+        "原始 dimensions 长度=%d", len(dims)
     )
 
     _QUERY_CONFIG_KEYS = {"breakdown", "measures"}
@@ -206,7 +206,7 @@ def run(payload_json: str) -> str:
     except json.JSONDecodeError as exc:
         return _err(f"payload JSON 解析失败: {exc}")
 
-    # json_repair 가 dimensions 안에 다른 필드를 접어버린 경우 복원
+    # json_repair 把其他字段折叠进 dimensions 时，还原到正确位置
     payload = _repair_collapsed_query_config(payload)
 
     insight_type = payload.get("insight_type")
