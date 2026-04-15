@@ -100,7 +100,7 @@ def render(context_json: str) -> str:
     _inject_chart_placeholders(ctx)
 
     env = Environment(
-        loader=FileSystemLoader(str(_REFERENCES_DIR)),
+        loader=FileSystemLoader(str(_REFERENCES_DIR), encoding="utf-8"),
         keep_trailing_newline=True,
     )
 
