@@ -542,14 +542,11 @@ Report 阶段只产出 **3 样东西**（不多不少）：
 
 ### 步骤
 
-1. 汇总所有 Phase 的 Step 结果，构造 context JSON。**对于执行期间 `chart_configs` 非空的步骤，在该步骤的 `description` 末尾追加 `\n\n[CHART:p{phase_id}s{step_id}]`**（占位符由你插入，模板不会自动添加）。
+1. 汇总所有 Phase 的 Step 结果，构造 context JSON。
 
-   🔴 **占位符格式铁律（零容忍）**：
-   - 必须全大写 `CHART`，禁止 `chart` / `Chart`
-   - 必须用方括号 `[...]`，禁止圆括号 `(...)` 或花括号 `{...}`
-   - `p` 和 `s` 必须小写，后面紧跟整数，禁止空格、连字符、下划线
-   - ✅ 唯一合法格式：`[CHART:p1s1]`、`[CHART:p2s3]`
-   - ❌ 非法：`[chart:p1s1]`、`[CHART:p1-s1]`、`[CHART: p1s1]`、`(CHART:p1s1)`
+   > **图表占位符由 `render_report.py` 自动注入**，无需手动在 description 里添加 `[CHART:...]`。
+   > 脚本会扫描每个 step 的 `chart_configs`，非空时自动在 description 末尾追加 `[CHART:p{phase_id}s{step_id}]`。
+
    ```json
    {
      "title": "网络质量数据洞察报告",
@@ -557,9 +554,9 @@ Report 阶段只产出 **3 样东西**（不多不少）：
      "direct_answer": "1-2 句直接回答用户问题，点明核心结论，例：该区域 CEI 低分主要由 PON-1 的 ODN 光路衰减导致，高峰时段 19:00-22:00 尤为明显。",
      "key_findings": [
        "🔴 最严重问题：PON-1 CEI 得分 54.08，低于均值 13.2 分，z-score=5.36",
-       "📊 主导维度：ODN_score 贡献度 43%，是拉低 CEI 均值的首要因素",
+       "📊 主导维度：ODN得分(ODN_score) 贡献度 43%，是拉低 CEI 均值的首要因素",
        "📅 问题时段：分钟表数据显示高峰时段 19:00-22:00 异常集中",
-       "🔗 因果链路：RxPower 持续低于 -25dBm → BIP 误码率升高 → ODN_score 下滑"
+       "🔗 因果链路：OLT接收光功率(RxPower) 持续低于 -25dBm → BIP误码越限次数(bipHighCnt) 升高 → ODN得分(ODN_score) 下滑"
      ],
      "root_cause_narrative": "根据 L3/L4 Phase 分析，根本原因是...（结合各 Phase 发现串联叙述，2-4 句）",
      "impact_summary": "涉及 N 个 PON 口设备，影响约 X 个用户，CEI 均值从正常的 Y 下降至 Z（降幅 W%）。",
@@ -573,8 +570,9 @@ Report 阶段只产出 **3 样东西**（不多不少）：
              "step_id": 1,
              "insight_type": "OutstandingMin",
              "significance": 0.41,
-             "description": "CEI 最低 PON 口为 288b6c71（54.08）\n\n[CHART:p1s1]",
-             "found_entities": {"portUuid": [...]}
+             "description": "CEI 最低 PON 口为 288b6c71（54.08）",
+             "found_entities": {"portUuid": [...]},
+             "chart_configs": { "...": "原样保留 run_insight.py 的返回值" }
            }
          ],
          "reflection": {"choice": "A", "reason": "..."}
