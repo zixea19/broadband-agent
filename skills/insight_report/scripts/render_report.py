@@ -15,14 +15,32 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment
 
-# Windows 兼容：保留默认编码（Linux/Mac 是 UTF-8，Windows 是 GBK），
-# 遇到不可编码字符（如 emoji）替换为 ? 而不是抛 UnicodeEncodeError 崩溃
+# Windows 兼容：强制 stdout 使用 UTF-8
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 _REFERENCES_DIR = Path(__file__).resolve().parents[1] / "references"
+
+
+def _gbk_safe(text: str) -> str:
+    """Strip characters that cannot be encoded in GBK (primarily emoji).
+
+    agno captures subprocess stdout with the system locale encoding (GBK on Chinese
+    Windows).  Chinese text and most punctuation are GBK-compatible; emoji and other
+    supplementary-plane characters are not.  Removing them prevents the
+    UnicodeDecodeError agno raises when it tries to decode our stdout bytes.
+    SKILL.md already prohibits emoji in context fields — this enforces it at code level.
+    """
+    result: list[str] = []
+    for ch in text:
+        try:
+            ch.encode("gbk")
+            result.append(ch)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass  # silently drop unencodable chars (emoji etc.)
+    return "".join(result)
 
 
 def _safe_parse_json(raw: str) -> dict:
@@ -99,16 +117,18 @@ def render(context_json: str) -> str:
     ctx.setdefault("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     _inject_chart_placeholders(ctx)
 
-    env = Environment(
-        loader=FileSystemLoader(str(_REFERENCES_DIR), encoding="utf-8"),
-        keep_trailing_newline=True,
-    )
-
     template_name = _pick_template(ctx)
+    template_path = _REFERENCES_DIR / template_name
 
     try:
-        tmpl = env.get_template(template_name)
-        return tmpl.render(**ctx)
+        # Read template explicitly as UTF-8 — avoids FileSystemLoader relying on
+        # the system locale encoding (GBK on Chinese Windows).
+        with open(template_path, encoding="utf-8") as fh:
+            template_source = fh.read()
+        env = Environment(keep_trailing_newline=True)
+        rendered = env.from_string(template_source).render(**ctx)
+        # Strip non-GBK characters (emoji etc.) so agno's GBK stdout decoder doesn't crash.
+        return _gbk_safe(rendered)
     except Exception as exc:
         return f"渲染失败: {exc}"
 
