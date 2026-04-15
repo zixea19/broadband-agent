@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Home WiFi Simulator Skill (Self-Contained).
 
 封装 WiFi 环境仿真的三个核心能力：

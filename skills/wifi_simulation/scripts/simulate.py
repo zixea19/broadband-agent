@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """WIFI 仿真 Skill 入口 — 参数映射 + 结果打包薄外壳。
 
 职责：
