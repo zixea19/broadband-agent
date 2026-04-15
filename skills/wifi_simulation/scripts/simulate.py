@@ -50,6 +50,7 @@ _DEFAULTS: dict[str, Any] = {
     "ap_count": 1,
     "grid_size": 40,
     "target_ap_count": 3,
+    "show_doors": False,
 }
 
 
@@ -99,10 +100,11 @@ def _run(params: dict[str, Any]) -> dict[str, Any]:
     ap = params["ap_count"]
     grid = params["grid_size"]
     target_ap = params["target_ap_count"]
+    show_doors = bool(params.get("show_doors", False))
 
     # 始终产出：2 张对比 PNG + 4 份 JSON 矩阵（补点前/后 × RSSI/卡顿率）
     result = _engine.generate_ap_optimization_comparison(
-        preset, ap, target_ap, str(out_dir), grid_size=grid
+        preset, ap, target_ap, str(out_dir), grid_size=grid, show_doors=show_doors
     )
     image_paths: list[dict[str, str]] = [
         {"label": "RSSI 对比图(补点前/后)", "path": result["rssi_comparison"], "kind": "rssi"},

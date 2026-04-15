@@ -32,6 +32,11 @@ wifi_simulation:
     recommended_range: [20, 60]
     note: "栅格越大计算越慢；40×40 约 5~15s（含 0.5dB RSSI 量化缓存），80×80 约 30s+"
 
+  # ── 门洞渲染（show_doors，仅大平层）─────────────────────────────────────
+  show_doors:
+    default: false
+    hint: "仅对大平层生效；true 时用精细化分段墙体替换默认墙体，门洞处无衰减"
+
   target_ap_count:
     default: 3
     constraint: "compare=true 时必须 > ap_count"
