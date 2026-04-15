@@ -11,8 +11,9 @@ M5 说明：InsightAgent assistant 文本中的 <!--event:xxx--> 阶段标记
          由后端原样透传为 `thinking(stepId="insight")` 事件，
          不在后端做结构化解析——前端自行识别 marker。
          图表/报告仍由脚本 stdout 生成独立 `render` 事件（渐进式）。
-M6 追加：wifi_simulation 单事件聚合 —— 2 PNG + 0/4 JSON 合并为一条
-         renderType="wifi_simulation" 事件，对应 docs/wifi_simulation_redesign.md。
+M6 追加：wifi_simulation 单事件聚合 —— 2 PNG + 4 JSON 合并为一条
+         wifi_result 事件（独立事件类型，非 render），每项图/JSON 均带显式
+         kind/phase 标签，供前端直接分类渲染。
 """
 
 from __future__ import annotations
@@ -516,12 +517,11 @@ async def _adapt_body(
                     )
 
                 # wifi_simulation 单独通道：解析 image_paths + data_paths，
-                # 聚合成 **单条** renderType="wifi_simulation" 事件（2 PNG + 0/4 JSON）。
-                # 详见 docs/wifi_simulation_redesign.md §4。
+                # 聚合成 **单条** wifi_result 事件（2 PNG + 4 JSON，每项含 kind/phase）。
                 if skill_name == "wifi_simulation":
                     for rb in _emit_wifi_simulation_render(agg.message_id, result_raw):
                         agg.render_blocks.append(rb)
-                        yield format_sse("render", rb), agg
+                        yield format_sse("wifi_result", rb), agg
 
                 # insight 场景：每次 insight_query / insight_report 完成时，同时
                 # 下发 `report` 和 `render` 两条 SSE 事件，payload 完全一致。
@@ -750,16 +750,15 @@ def _build_insight_conclusion(description: Any, significance: float) -> str:
 # ─── wifi_simulation：单事件聚合（2 PNG + 0/4 JSON 内联） ─────────────────────
 
 def _emit_wifi_simulation_render(msg_id: str, result_raw: Any) -> list[dict]:
-    """把 wifi_simulation 的 stdout 聚合成 **单条** renderType="wifi_simulation"
-    事件，供前端右侧面板渲染一张综合卡片。
+    """把 wifi_simulation 的 stdout 聚合成 **单条** wifi_result 事件。
 
     载荷内容：
-      - images[]：PNG 拷贝到 `data/images/` 后对外给 `/api/images/{imageId}`
-      - dataFiles[]：JSON 数据文件读到内存，整份 JSON 内联在 renderData.dataFiles[].content
+      - images[]：PNG 拷贝到 `data/images/` 后对外给 `/api/images/{imageId}`，
+        每项含显式 kind（"rssi" / "stall"）
+      - dataFiles[]：JSON 数据文件读到内存，整份 JSON 内联在 dataFiles[].content，
+        每项含显式 kind（"rssi" / "stall"）和 phase（"before" / "after"）
         （随 messages.render_blocks 落盘，历史回放直接还原；不新增路由）
-      - stats / summary / mode / preset / gridSize 等元数据原样透传
-
-    协议详见 docs/wifi_simulation_redesign.md §4.2。
+      - stats / summary / preset / gridSize / apCount / targetApCount 元数据原样透传
 
     容错：任何单项（某张 PNG / 某份 JSON）失败不阻断其它；全失败时返回空 list。
     """
@@ -772,12 +771,11 @@ def _emit_wifi_simulation_render(msg_id: str, result_raw: Any) -> list[dict]:
     images = _collect_wifi_images(msg_id, parsed.get("image_paths") or [], api_log)
     data_files = _collect_wifi_data_files(msg_id, parsed.get("data_paths") or [], api_log)
 
-    # 无任何图也无数据：不发 render（skill 可能是 error 路径）
+    # 无任何图也无数据：不发事件（skill 可能是 error 路径）
     if not images and not data_files:
         return []
 
     render_data: dict[str, Any] = {
-        "mode": parsed.get("mode") or "basic",
         "preset": parsed.get("preset") or "",
         "gridSize": parsed.get("grid_size"),
         "apCount": parsed.get("ap_count"),
@@ -788,9 +786,10 @@ def _emit_wifi_simulation_render(msg_id: str, result_raw: Any) -> list[dict]:
         "dataFiles": data_files,
     }
     api_log.info(
-        f"wifi_simulation render 聚合 mode={render_data['mode']} "
+        f"wifi_simulation wifi_result 聚合 "
         f"images={len(images)} dataFiles={len(data_files)}"
     )
+    # render_blocks 存储格式须含 renderType（repository._row_to_message 按此字段分类）
     return [{"renderType": "wifi_simulation", "renderData": render_data}]
 
 

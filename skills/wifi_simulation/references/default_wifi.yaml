@@ -32,11 +32,6 @@ wifi_simulation:
     recommended_range: [20, 60]
     note: "栅格越大计算越慢；40×40 约 5~15s（含 0.5dB RSSI 量化缓存），80×80 约 30s+"
 
-  # ── AP 补点推荐（compare 模式）──────────────────────────────────────────
-  compare:
-    default: false
-    hint: "方案段落出现 `AP补点推荐: True` 时置 true"
-
   target_ap_count:
     default: 3
     constraint: "compare=true 时必须 > ap_count"

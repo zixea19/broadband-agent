@@ -1,15 +1,15 @@
 ---
 name: wifi_simulation
-description: "家宽 WIFI 仿真：内嵌户型预设 → RSSI 热力图 + RTMP 卡顿率栅格图；可选 AP 补点推荐模式输出补点前后对比图 + 4 个 JSON 矩阵"
+description: "家宽 WIFI 仿真：内嵌户型预设 → AP 补点前后对比（RSSI 热力图 + 卡顿率栅格），输出 2 张对比 PNG + 4 份 JSON 矩阵"
 ---
 
 # WIFI 仿真
 
 ## Metadata
-- **paradigm**: Pipeline + Generator（脚本内部按 `compare` 开关分派能力，对 Agent 表现为一次调用；脚本 stdout 为结构化 JSON 原样透传）
+- **paradigm**: Pipeline + Generator（脚本内部串行调用仿真引擎，对 Agent 表现为一次调用；脚本 stdout 为结构化 JSON 原样透传）
 - **when_to_use**: `provisioning-wifi` 需要按方案段落执行 WIFI 信号仿真 / 卡顿率栅格 / AP 补点推荐
-- **inputs**: 仿真参数 JSON（户型、AP 数、栅格、是否补点对比）
-- **outputs**: `image_paths`（2 张 PNG）+ `data_paths`（0 或 4 个 JSON）+ `stats` 摘要 + `summary`
+- **inputs**: 仿真参数 JSON（户型、AP 数、目标 AP 数、栅格）
+- **outputs**: `image_paths`（2 张对比 PNG）+ `data_paths`（4 份 JSON 矩阵，补点前/后 × RSSI/卡顿率）+ `stats` 摘要 + `summary`
 
 ## Parameter Schema
 
@@ -17,24 +17,27 @@ description: "家宽 WIFI 仿真：内嵌户型预设 → RSSI 热力图 + RTMP 
 |---|---|---|---|---|
 | `preset` | string | 否 | `"大平层"` | 户型预设：`一居室` / `两居室` / `三居室` / `大平层` |
 | `ap_count` | int | 否 | `1` | 当前 AP 数量（`>=1`） |
+| `target_ap_count` | int | 否 | `3` | 补点后目标 AP 数，必须 `> ap_count` |
 | `grid_size` | int | 否 | `40` | 栅格分辨率 NxN，推荐 `20` ~ `60`；越大越慢 |
-| `compare` | bool | 否 | `false` | 是否启用 AP 补点推荐（compare 模式） |
-| `target_ap_count` | int | 否 | `3` | compare 模式下目标 AP 数，必须 `> ap_count` |
 
 方案段落 → 参数映射（由 Plan 提供，Provisioning 按 schema 提参即可，本 Skill 不做业务判断）：
 
 | 方案段落 | 参数 |
 |---|---|
-| `WIFI信号仿真: True` 或 `应用卡顿仿真: True` | 无需额外字段（basic 模式默认产出 2 张 PNG） |
-| `AP补点推荐: True` | `compare=true`，可带 `target_ap_count` |
+| `WIFI信号仿真: True` 或 `应用卡顿仿真: True` 或 `AP补点推荐: True` | 无需额外字段（使用默认值即可） |
+| 指定目标 AP 数（如"补到 3 个 AP"） | `target_ap_count=3` |
 | 栅格调整（如"用 20×20 栅格"） | `grid_size=20` |
 
-## 运行模式
+## 产物说明
 
-| 模式 | 触发 | 产物 |
+每次调用始终产出以下内容：
+
+| 类型 | 数量 | 说明 |
 |---|---|---|
-| **basic** | `compare=false` | 2 张 PNG：`<preset>_rssi_ap<N>.png` + `<preset>_stall_ap<N>.png`；`data_paths=[]` |
-| **compare** | `compare=true` | 2 张对比 PNG + 4 份 JSON 矩阵（补点前/后 × RSSI/卡顿率）；另产出 4 份 `.npy`**不对外曝光** |
+| 对比 PNG | 2 张 | RSSI 对比图（补点前/后并排）、卡顿率对比图（补点前/后并排） |
+| JSON 矩阵 | 4 份 | 补点前 RSSI、补点后 RSSI、补点前卡顿率、补点后卡顿率 |
+
+每张图显式带 `kind`（`"rssi"` 或 `"stall"`），每份 JSON 显式带 `kind` + `phase`（`"before"` / `"after"`）。
 
 ## When to Use
 
@@ -60,13 +63,10 @@ description: "家宽 WIFI 仿真：内嵌户型预设 → RSSI 热力图 + RTMP 
 
 ## Output Protocol
 
-**compare 模式**（示例）：
-
 ```json
 {
   "skill": "wifi_simulation",
   "status": "ok",
-  "mode": "compare",
   "preset": "大平层",
   "grid_size": 40,
   "ap_count": 1,
@@ -84,20 +84,18 @@ description: "家宽 WIFI 仿真：内嵌户型预设 → RSSI 热力图 + RTMP 
   "stats": {
     "rssi_before": {"mean_rssi": -72.1, "worst_rssi": -90.0, "shape": [42, 42]},
     "rssi_after":  {"mean_rssi": -55.3, "worst_rssi": -78.5, "shape": [42, 42]},
-    "stall_before": {"mean_stall_rate": 18.2, "max_stall_rate": 56.4, "shape": [42, 42]},
-    "stall_after":  {"mean_stall_rate": 2.1,  "max_stall_rate": 9.7,  "shape": [42, 42]}
+    "stall_before": {"mean_stall_rate": 0.182, "max_stall_rate": 0.564, "shape": [42, 42]},
+    "stall_after":  {"mean_stall_rate": 0.021, "max_stall_rate": 0.097, "shape": [42, 42]}
   },
   "summary": "大平层 1AP→3AP 补点优化完成；平均 RSSI 由 -72.1 dBm 提升至 -55.3 dBm；平均卡顿率由 18.20% 降至 2.10%"
 }
 ```
 
-**basic 模式**：`mode="basic"`，`data_paths=[]`，`stats` 仅含 `rssi` / `stall` 两条，无 `target_ap_count`。
-
 错误路径：`{"skill":"wifi_simulation", "status":"error", "message":"..."}` 单行 JSON。
 
 ## Scripts
 
-- `scripts/simulate.py` — 参数校验 + 模式分派 + stdout 打包（薄外壳）
+- `scripts/simulate.py` — 参数校验 + 引擎调用 + stdout 打包（薄外壳）
 - `scripts/home_wifi_engine.py` — 自包含仿真引擎（户型预设 + FSPL+墙体衰减 + RTMP 卡顿仿真 + 贪心补点）
 
 ## References
@@ -106,25 +104,25 @@ description: "家宽 WIFI 仿真：内嵌户型预设 → RSSI 热力图 + RTMP 
 
 ## Examples
 
-**输入（compare 模式，栅格 20）**：
+**输入（三居室，1AP 补到 3AP，栅格 20）**：
 
 ```python
 get_skill_script(
     "wifi_simulation",
     "simulate.py",
     execute=True,
-    args=['{"preset":"大平层","ap_count":1,"target_ap_count":3,"compare":true,"grid_size":20}']
+    args=['{"preset":"三居室","ap_count":1,"target_ap_count":3,"grid_size":20}']
 )
 ```
 
-**输入（basic 模式，两居室 2AP）**：
+**输入（大平层，默认参数）**：
 
 ```python
 get_skill_script(
     "wifi_simulation",
     "simulate.py",
     execute=True,
-    args=['{"preset":"两居室","ap_count":2,"grid_size":40}']
+    args=['{}']
 )
 ```
 
