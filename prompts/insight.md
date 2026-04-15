@@ -292,23 +292,48 @@ Report (1 次)
 
 ## 3. 阶段 1 — Plan
 
+### 业务术语映射（优先识别，命中即触发指定维度类）
+
+用户说到以下关键词时，**直接映射到对应维度**，走**指定维度类（3 个 Phase）**，不走根因分析类：
+
+| 用户说的词 | 对应维度 | focus_dimensions |
+|---|---|---|
+| 质差 / 用户质差率 / 业务质差 / 质差次数 | Service | `["Service"]` |
+| WiFi 质量差 / WiFi 干扰 / 无线问题 | Wifi | `["Wifi"]` |
+| 光路问题 / ODN / 光功率 / 光衰 / BIP / FEC | ODN | `["ODN"]` |
+| 网关问题 / 网关异常 / 家庭网关 | Gateway | `["Gateway"]` |
+| 稳定性差 / 频繁断线 / 告警多 | Stability | `["Stability"]` |
+| 速率低 / 限速 / 带宽不足 | Rate | `["Rate"]` |
+| OLT 问题 / PON 口异常 | OLT | `["OLT"]` |
+| 终端问题 / STA / 接入设备多 | STA | `["STA"]` |
+
+### 任务类型分类（优先级从高到低）
+
+> 🔴 按以下优先级判断，**高优先级匹配后立即停止判断，不再检查低优先级**：
+
+1. **指定设备类**（最高优先级）— 用户提供了 portUuid / gatewayMac → **3 个 Phase**，跳过设备定位，直接从维度扫描开始
+2. **指定维度类** — 命中上方"业务术语映射"表中的任意关键词 → **3 个 Phase**（即使用户同时说了"分析原因"也走 3 Phase，不走 4 Phase）
+   - Phase 1：定位该维度得分最差的设备（`OutstandingMin` on `{维度}_score`）
+   - Phase 2：针对这些设备，分析该维度天表细化字段，找根因指标（`focus_dimensions` 填对应维度）
+   - Phase 3：下钻分钟表，时序验证
+3. **简单查询类** — 用户明确说"只需列出 / 找出 Top N / 无需分析原因" → **1 个 Phase**，NL2Code 直出
+4. **根因分析类**（最低优先级）— 以上都不命中，且用户想知道"为什么 / 原因 / 根因" → **4 个 Phase**，L1→L2→L3→L4
+
 ### 流程
-1. 判断任务类型（参考 `plan_fewshots.md` 的 4 类划分）：
-   - **简单查询**（"找出 Top N" / "只需输出"）→ 1 个 Phase，用 NL2Code 直出
-   - **根因分析**（"分析原因" / "为什么"）→ 4 个 Phase，严格 L1→L2→L3→L4
-   - **指定维度**（"WiFi 差" / "光路问题"）→ 2 个 Phase，跳过 L1/L2 直接 L3→L4
-   - **指定设备**（用户给了 portUuid / gatewayMac）→ 3 个 Phase，跳过 L1
+1. 按上方优先级判断任务类型，确定 Phase 数量（详细设计参考 `plan_fewshots.md`）
 2. 🔴 **必须**在 assistant 消息中输出 MacroPlan JSON（前端需要渲染阶段概览）。格式如下：
 
    ```
    <!--event:plan-->
-   {"goal": "用户意图摘要", "total_phases": 4, "phases": [{"phase_id": 1, "name": "L1-定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "description": "...", "focus_dimensions": []}, ...]}
+   {"goal": "用户意图摘要", "total_phases": 3, "phases": [{"phase_id": 1, "name": "定位低分PON口", "milestone": "识别CEI最低的PON口列表", "table_level": "day", "description": "...", "focus_dimensions": []}, ...]}
    ```
 
    **先输出这段 JSON，再开始执行 Phase 1。不要跳过这一步。**
 
+   > ⚠️ Phase `name` 字段必须用业务语言，**禁止出现 L1 / L2 / L3 / L4 编号前缀**（如"L1-定位低分PON口"是错误写法，"定位低分PON口"才正确）。
+
 ### 加载参考文件的时机
-- 用户问题**明确是根因分析 / 指定维度 / 指定设备**时 → 加载 `plan_fewshots.md`
+- 用户问题**明确是根因分析 / 指定维度 / 指定设备**时 → 加载 `plan_fewshots.md` 查看典型故事线
 - 用户问题是简单查询时 → 不必加载，直接 1 Phase + NL2Code
 
 ### 硬约束
