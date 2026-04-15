@@ -157,6 +157,11 @@ ABORT 时的正确做法：
 如果前序 Phase 没有产出 `found_entities`，先补一个天表 `OutstandingMin` 步骤找到实体，
 再进行分钟表下钻。违反此规则时脚本会直接返回 error，不会执行查询。
 
+⚠️ **天表（`table_level=day`）Phase 2 及以后**：如果前序 Phase 已产出 `found_entities`，
+后续天表步骤也**应当**带 `portUuid` 或 `gatewayMac` 过滤，聚焦到问题设备上。
+只有 Phase 1（初始定位阶段）才允许全量扫 `[[]]`。
+违反时脚本会在 `fix_warnings` 里追加提醒，请根据提醒补加过滤条件后重试。
+
 ### 铁律 5 · 事件 marker 后只跟一句话指针，禁止重复表格
 
 `<!--event:xxx-->` JSON 会被前端**自动渲染为结构化表格**。输出事件后**只允许**跟一句话

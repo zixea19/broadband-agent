@@ -238,11 +238,25 @@ def run(payload_json: str) -> str:
 
     data_path = payload.get("data_path") or _resolve_data_path(table_level)
 
+    # 天表 Phase >= 2 时若未加过滤，追加 warning 提醒使用 found_entities
+    _day_no_filter_warning: list[str] = []
+    if table_level == "day":
+        phase_id = payload.get("phase_id") or 1
+        dims = query_config.get("dimensions", [[]])
+        is_empty_filter = not dims or dims == [[]] or all(not g for g in dims)
+        if is_empty_filter and phase_id >= 2:
+            _day_no_filter_warning = [
+                f"Phase {phase_id} 天表查询未加 dimensions 过滤，建议使用前序 Phase "
+                "的 found_entities（portUuid/gatewayMac）缩小数据范围，避免全量扫描。"
+            ]
+
     # 1. 修复三元组（query_fixer 可能替换字段名 / breakdown 名 / measures 名）
     try:
         fixed_config, fix_warnings = cic.fix_query_config(query_config, table_level=table_level)
     except Exception as exc:
         return _err(f"fix_query_config 失败: {type(exc).__name__}: {exc}")
+
+    fix_warnings = _day_no_filter_warning + fix_warnings
 
     # 兜底：fixer 意外清空 measures 时还原为原始值，确保 SQL 带聚合列
     if not fixed_config.get("measures"):
