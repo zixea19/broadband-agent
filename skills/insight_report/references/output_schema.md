@@ -29,7 +29,7 @@
           "significance": 0.73,
           "description": "CEI_score 最小值出现在 288b6c71-...",
           "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]},
-          "chart_configs": { ... }
+          "has_chart": true
         }
       ],
       "reflection": {"choice": "A", "reason": "..."}

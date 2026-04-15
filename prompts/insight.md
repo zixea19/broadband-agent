@@ -583,7 +583,8 @@ Report 阶段只产出 **3 样东西**（不多不少）：
 1. 汇总所有 Phase 的 Step 结果，构造 context JSON。
 
    > **图表占位符由 `render_report.py` 自动注入**，无需手动在 description 里添加 `[CHART:...]`。
-   > 脚本会扫描每个 step 的 `chart_configs`，非空时自动在 description 末尾追加 `[CHART:p{phase_id}s{step_id}]`。
+   > 脚本检查每个 step 的 `has_chart` 字段，为 `true` 时自动在 description 末尾追加 `[CHART:p{phase_id}s{step_id}]`。
+   > **`has_chart` 填写规则**：该 step 调用 `run_insight.py` 时，若返回的 `chart_configs` 字段非空（非 `{}`），填 `true`；否则填 `false`。`chart_configs` 本身无需复制进 context JSON。
 
    ```json
    {
@@ -610,7 +611,7 @@ Report 阶段只产出 **3 样东西**（不多不少）：
              "significance": 0.41,
              "description": "CEI 最低 PON 口为 288b6c71（54.08）",
              "found_entities": {"portUuid": [...]},
-             "chart_configs": { "...": "原样保留 run_insight.py 的返回值" }
+             "has_chart": true
            }
          ],
          "reflection": {"choice": "A", "reason": "..."}
