@@ -176,7 +176,7 @@ CEI体验感知：
   "scope_indicator": "single_user",
   "issue_type": "wifi_coverage",
   "complaint_keyword": "信号弱",
-  "guarantee_target": "家庭网络"
+  "guarantee_target": "家庭级"
 }
 ```
 
