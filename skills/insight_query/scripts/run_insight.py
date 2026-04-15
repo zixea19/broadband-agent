@@ -186,6 +186,18 @@ def run(payload_json: str) -> str:
     value_columns = payload.get("value_columns") or default_value_cols
     group_column = payload.get("group_column") or default_group_col
 
+    # --- DEBUG START (临时调试，复现后删除) ---
+    import sys as _sys
+    print(
+        f"[DEBUG] measures_raw={query_config.get('measures')} "
+        f"fixed_measures={fixed_config.get('measures')} "
+        f"default_value_cols={default_value_cols} "
+        f"value_columns={value_columns} "
+        f"dimensions={query_config.get('dimensions')}",
+        file=_sys.stderr,
+    )
+    # --- DEBUG END ---
+
     if not value_columns:
         return _err("无法从 payload 或 fixed_config.measures 推导 value_columns")
 
