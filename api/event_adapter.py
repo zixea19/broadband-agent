@@ -14,6 +14,8 @@ M5 说明：InsightAgent assistant 文本中的 <!--event:xxx--> 阶段标记
 M6 追加：wifi_simulation 单事件聚合 —— 2 PNG + 4 JSON 合并为一条
          wifi_result 事件（独立事件类型，非 render），每项图/JSON 均带显式
          kind/phase 标签，供前端直接分类渲染。
+M7 追加：experience_assurance 单事件聚合 —— 体验保障配置结果（14 字段）
+         合并为一条 experience_assurance_result 事件，供前端渲染保障配置表格。
 """
 
 from __future__ import annotations
@@ -524,6 +526,13 @@ async def _adapt_body(
                         agg.render_blocks.append(rb)
                         yield format_sse("wifi_result", rb), agg
 
+                # experience_assurance 单独通道：解析 result 字段，
+                # 聚合成单条 experience_assurance_result 事件，供前端渲染保障配置表格。
+                if skill_name == "experience_assurance":
+                    for rb in _emit_experience_assurance_result(result_raw):
+                        agg.render_blocks.append(rb)
+                        yield format_sse("experience_assurance_result", rb), agg
+
                 # insight 场景：每次 insight_query / insight_report 完成时，同时
                 # 下发 `report` 和 `render` 两条 SSE 事件，payload 完全一致。
                 # 职责划分：
@@ -798,6 +807,42 @@ def _build_insight_conclusion(description: Any, significance: float) -> str:
     sig_text = f"显著性 {significance:.2f}" if significance > 0 else ""
     parts = [p for p in [desc_str, sig_text] if p]
     return "；".join(parts) if parts else "洞察分析完成"
+
+
+# ─── experience_assurance：单事件聚合（保障配置结果） ──────────────────────────
+
+def _emit_experience_assurance_result(result_raw: Any) -> list[dict]:
+    """把 experience_assurance 的 stdout 聚合成 **单条** experience_assurance_result 事件。
+
+    载荷内容：
+      - businessType / applicationType / application  ← 任务参数元数据
+      - taskData  ← result 字段完整透传（14 个 FAN 协议字段，前端按需渲染为表格）
+      - isMock    ← 标记是否为 mock 数据，前端可据此显示提示
+
+    容错：stdout 解析失败或 status==error 时返回空 list，不阻断其它事件。
+    """
+    parsed = _parse_stdout(result_raw)
+    if not isinstance(parsed, dict):
+        return []
+    if parsed.get("status") == "error":
+        return []
+
+    task_data = parsed.get("result")
+    if not isinstance(task_data, dict) or not task_data:
+        return []
+
+    render_data: dict[str, Any] = {
+        "businessType": parsed.get("business_type") or "",
+        "applicationType": parsed.get("application_type") or "",
+        "application": parsed.get("application") or "",
+        "isMock": bool(parsed.get("is_mock", True)),
+        "taskData": task_data,
+    }
+    logger.bind(channel="api").info(
+        f"experience_assurance result 聚合 taskId={task_data.get('taskId', '')} "
+        f"isMock={render_data['isMock']}"
+    )
+    return [{"renderType": "experience_assurance", "renderData": render_data}]
 
 
 # ─── wifi_simulation：单事件聚合（2 PNG + 0/4 JSON 内联） ─────────────────────
