@@ -143,12 +143,71 @@ def _resolve_data_path(table_level: str) -> str:
     return "mock"
 
 
+def _repair_collapsed_query_config(payload: dict) -> dict:
+    """json_repair 오류 복구: dimensions 안에 breakdown/measures/payload 필드가 접혀들어간 경우를 수리합니다.
+
+    재현 패턴:
+        json.loads 실패 → json_repair 가 [[{filter}]] 이후 모든 필드를
+        dimensions 배열 원소로 접어버림.
+
+    수리 후:
+        query_config.dimensions = [[{실제 필터}]]
+        query_config.breakdown  = {...}   ← dimensions 에서 복원
+        query_config.measures   = [...]   ← dimensions 에서 복원
+        payload.table_level 등  ← dimensions 에서 복원
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    query_config = payload.get("query_config")
+    if not isinstance(query_config, dict):
+        return payload
+
+    dims = query_config.get("dimensions", [])
+    if not isinstance(dims, list):
+        return payload
+
+    # 증상 감지: dimensions 내부에 list 가 아닌 dict 원소가 있으면 접힘 발생
+    if not any(isinstance(d, dict) for d in dims):
+        return payload
+
+    _log.warning(
+        "[run_insight] json_repair 구조 붕괴 감지 — dimensions 내 dict 원소를 복원합니다. "
+        "원본 dimensions 길이=%d", len(dims)
+    )
+
+    _QUERY_CONFIG_KEYS = {"breakdown", "measures"}
+    _PAYLOAD_LEVEL_KEYS = {
+        "table_level", "phase_id", "step_id",
+        "phase_name", "step_name", "data_path", "insight_type",
+    }
+
+    actual_dims: list = []
+    for item in dims:
+        if isinstance(item, list):
+            actual_dims.append(item)
+        elif isinstance(item, dict):
+            for k, v in item.items():
+                if k in _QUERY_CONFIG_KEYS:
+                    if not query_config.get(k):
+                        query_config[k] = v
+                elif k in _PAYLOAD_LEVEL_KEYS:
+                    if not payload.get(k):
+                        payload[k] = v
+
+    query_config["dimensions"] = actual_dims if actual_dims else [[]]
+    return payload
+
+
 def run(payload_json: str) -> str:
     """主入口：解析 payload → 查询 → 执行洞察 → 序列化。"""
     try:
         payload: dict[str, Any] = _safe_parse_json(payload_json)
     except json.JSONDecodeError as exc:
         return _err(f"payload JSON 解析失败: {exc}")
+
+    # json_repair 가 dimensions 안에 다른 필드를 접어버린 경우 복원
+    payload = _repair_collapsed_query_config(payload)
 
     insight_type = payload.get("insight_type")
     if not insight_type:
@@ -185,18 +244,6 @@ def run(payload_json: str) -> str:
 
     value_columns = payload.get("value_columns") or default_value_cols
     group_column = payload.get("group_column") or default_group_col
-
-    # --- DEBUG START (临时调试，复现后删除) ---
-    import sys as _sys
-    print(
-        f"[DEBUG] measures_raw={query_config.get('measures')} "
-        f"fixed_measures={fixed_config.get('measures')} "
-        f"default_value_cols={default_value_cols} "
-        f"value_columns={value_columns} "
-        f"dimensions={query_config.get('dimensions')}",
-        file=_sys.stderr,
-    )
-    # --- DEBUG END ---
 
     if not value_columns:
         return _err("无法从 payload 或 fixed_config.measures 推导 value_columns")
