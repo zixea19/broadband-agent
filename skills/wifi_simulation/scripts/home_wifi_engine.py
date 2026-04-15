@@ -53,6 +53,20 @@ def _setup_chinese_font() -> str | None:
 
 _FONT_NAME = _setup_chinese_font()
 
+# ─── 暗色主题 rcParams（与前端深色背景风格保持一致）─────────────────────────
+_DARK_RC: dict = {
+    "figure.facecolor": "#111827",   # 深灰蓝背景（Tailwind gray-900）
+    "axes.facecolor":   "#1f2937",   # 数据区域略浅（gray-800）
+    "text.color":       "#f9fafb",   # 近白色文字（gray-50）
+    "axes.labelcolor":  "#f9fafb",
+    "axes.titlecolor":  "#f9fafb",
+    "xtick.color":      "#9ca3af",   # 刻度（gray-400）
+    "ytick.color":      "#9ca3af",
+    "axes.edgecolor":   "#374151",   # 坐标轴边框（gray-700）
+    "legend.facecolor": "#1f2937",
+    "legend.edgecolor": "#374151",
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════
 #  SimParams
@@ -1602,28 +1616,29 @@ def generate_rssi_heatmap(
 
     X, Y, rssi = compute_heatmap(fp, grid_size=grid_size)
 
-    fig, ax = plt.subplots(figsize=(10, 8))
-    im = ax.pcolormesh(
-        X, Y, rssi, cmap=_rssi_cmap(), shading="auto", vmin=-90, vmax=-30
-    )
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("RSSI (dBm)")
+    with matplotlib.rc_context(_DARK_RC):
+        fig, ax = plt.subplots(figsize=(10, 8))
+        im = ax.pcolormesh(
+            X, Y, rssi, cmap=_rssi_cmap(), shading="auto", vmin=-90, vmax=-30
+        )
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label("RSSI (dBm)")
 
-    _draw_floorplan(ax, fp)
+        _draw_floorplan(ax, fp)
 
-    avg_rssi = float(np.mean(_inner(rssi)))
-    worst_rssi = float(np.min(_inner(rssi)))
-    title = (
-        f"{fp.name} 信号热力图 | AP={ap_count} | 分辨率 {grid_size}x{grid_size}\n"
-        f"平均 RSSI: {avg_rssi:.1f} dBm | 最差 RSSI: {worst_rssi:.1f} dBm"
-    )
-    ax.set_title(title)
-    ax.set_xlabel("宽度 (m)")
-    ax.set_ylabel("高度 (m)")
+        avg_rssi = float(np.mean(_inner(rssi)))
+        worst_rssi = float(np.min(_inner(rssi)))
+        title = (
+            f"{fp.name} 信号热力图 | AP={ap_count} | 分辨率 {grid_size}x{grid_size}\n"
+            f"平均 RSSI: {avg_rssi:.1f} dBm | 最差 RSSI: {worst_rssi:.1f} dBm"
+        )
+        ax.set_title(title)
+        ax.set_xlabel("宽度 (m)")
+        ax.set_ylabel("高度 (m)")
 
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
 
 
 def generate_stall_grid(
@@ -1643,40 +1658,41 @@ def generate_stall_grid(
     inner_stall = _inner(stall_pct)
     max_rate = float(inner_stall.max()) if inner_stall.max() > 1e-6 else 1.0
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    with matplotlib.rc_context(_DARK_RC):
+        fig, ax = plt.subplots(figsize=(10, 8))
 
-    x_flat = X.ravel()
-    y_flat = Y.ravel()
-    s_flat = stall_pct.ravel()
+        x_flat = X.ravel()
+        y_flat = Y.ravel()
+        s_flat = stall_pct.ravel()
 
-    sizes = np.full(s_flat.shape, 30.0)
+        sizes = np.full(s_flat.shape, 30.0)
 
-    sc = ax.scatter(
-        x_flat,
-        y_flat,
-        c=s_flat,
-        cmap="RdYlGn_r",
-        s=sizes,
-        vmin=0,
-        vmax=max(max_rate, 10.0),
-        edgecolors="none",
-    )
-    cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label("卡顿率 (%)")
+        sc = ax.scatter(
+            x_flat,
+            y_flat,
+            c=s_flat,
+            cmap="RdYlGn_r",
+            s=sizes,
+            vmin=0,
+            vmax=max(max_rate, 10.0),
+            edgecolors="none",
+        )
+        cbar = fig.colorbar(sc, ax=ax)
+        cbar.set_label("卡顿率 (%)")
 
-    _draw_floorplan(ax, fp)
+        _draw_floorplan(ax, fp)
 
-    title = (
-        f"{fp.name} RTMP 卡顿率栅格图 | AP={ap_count} | 分辨率 {grid_size}x{grid_size}\n"
-        f"平均卡顿率: {inner_stall.mean():.2f}% | 峰值: {inner_stall.max():.2f}%"
-    )
-    ax.set_title(title)
-    ax.set_xlabel("宽度 (m)")
-    ax.set_ylabel("高度 (m)")
+        title = (
+            f"{fp.name} RTMP 卡顿率栅格图 | AP={ap_count} | 分辨率 {grid_size}x{grid_size}\n"
+            f"平均卡顿率: {inner_stall.mean():.2f}% | 峰值: {inner_stall.max():.2f}%"
+        )
+        ax.set_title(title)
+        ax.set_xlabel("宽度 (m)")
+        ax.set_ylabel("高度 (m)")
 
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
 
 
 def _inner(matrix: np.ndarray) -> np.ndarray:
@@ -1759,63 +1775,65 @@ def generate_ap_optimization_comparison(
 
     paths = {}
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
-    for ax, fp, rssi, label in [
-        (axes[0], fp_before, rssi_before, f"补点前 (AP={current_ap_count})"),
-        (axes[1], fp_after, rssi_after, f"补点后 (AP={current_ap_count + len(recs)})"),
-    ]:
-        im = ax.pcolormesh(
-            Xs, Ys, rssi, cmap=_rssi_cmap(), shading="auto", vmin=-90, vmax=-30
-        )
-        fig.colorbar(im, ax=ax, label="RSSI (dBm)")
-        _draw_floorplan(ax, fp)
-        inner_rssi = _inner(rssi)
-        avg = float(np.mean(inner_rssi))
-        worst = float(np.min(inner_rssi))
-        ax.set_title(f"{label}\n平均 RSSI: {avg:.1f} dBm | 最差: {worst:.1f} dBm")
-        ax.set_xlabel("宽度 (m)")
-        ax.set_ylabel("高度 (m)")
+    with matplotlib.rc_context(_DARK_RC):
+        fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+        for ax, fp, rssi, label in [
+            (axes[0], fp_before, rssi_before, f"补点前 (AP={current_ap_count})"),
+            (axes[1], fp_after, rssi_after, f"补点后 (AP={current_ap_count + len(recs)})"),
+        ]:
+            im = ax.pcolormesh(
+                Xs, Ys, rssi, cmap=_rssi_cmap(), shading="auto", vmin=-90, vmax=-30
+            )
+            fig.colorbar(im, ax=ax, label="RSSI (dBm)")
+            _draw_floorplan(ax, fp)
+            inner_rssi = _inner(rssi)
+            avg = float(np.mean(inner_rssi))
+            worst = float(np.min(inner_rssi))
+            ax.set_title(f"{label}\n平均 RSSI: {avg:.1f} dBm | 最差: {worst:.1f} dBm")
+            ax.set_xlabel("宽度 (m)")
+            ax.set_ylabel("高度 (m)")
 
-    plt.tight_layout()
-    rssi_cmp_path = output_dir / f"{preset_name}_rssi_comparison.png"
-    plt.savefig(rssi_cmp_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+        plt.tight_layout()
+        rssi_cmp_path = output_dir / f"{preset_name}_rssi_comparison.png"
+        plt.savefig(rssi_cmp_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
     paths["rssi_comparison"] = str(rssi_cmp_path)
 
-    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
-    for ax, fp, stall, label in [
-        (axes[0], fp_before, stall_before, f"补点前 (AP={current_ap_count})"),
-        (axes[1], fp_after, stall_after, f"补点后 (AP={current_ap_count + len(recs)})"),
-    ]:
-        stall_pct = stall * 100.0
-        inner_stall = _inner(stall_pct)
-        max_rate = float(inner_stall.max()) if inner_stall.max() > 1e-6 else 1.0
-        x_flat = Xg.ravel()
-        y_flat = Yg.ravel()
-        s_flat = stall_pct.ravel()
-        sizes = np.full(s_flat.shape, 30.0)
-        sc = ax.scatter(
-            x_flat,
-            y_flat,
-            c=s_flat,
-            cmap="RdYlGn_r",
-            s=sizes,
-            vmin=0,
-            vmax=max(max_rate, 10.0),
-            edgecolors="none",
-        )
-        fig.colorbar(sc, ax=ax, label="卡顿率 (%)")
-        _draw_floorplan(ax, fp)
-        ax.set_title(
-            f"{label}\n平均: {inner_stall.mean():.2f}% | 峰值: {inner_stall.max():.2f}%"
-        )
-        ax.set_xlabel("宽度 (m)")
-        ax.set_ylabel("高度 (m)")
+    with matplotlib.rc_context(_DARK_RC):
+        fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+        for ax, fp, stall, label in [
+            (axes[0], fp_before, stall_before, f"补点前 (AP={current_ap_count})"),
+            (axes[1], fp_after, stall_after, f"补点后 (AP={current_ap_count + len(recs)})"),
+        ]:
+            stall_pct = stall * 100.0
+            inner_stall = _inner(stall_pct)
+            max_rate = float(inner_stall.max()) if inner_stall.max() > 1e-6 else 1.0
+            x_flat = Xg.ravel()
+            y_flat = Yg.ravel()
+            s_flat = stall_pct.ravel()
+            sizes = np.full(s_flat.shape, 30.0)
+            sc = ax.scatter(
+                x_flat,
+                y_flat,
+                c=s_flat,
+                cmap="RdYlGn_r",
+                s=sizes,
+                vmin=0,
+                vmax=max(max_rate, 10.0),
+                edgecolors="none",
+            )
+            fig.colorbar(sc, ax=ax, label="卡顿率 (%)")
+            _draw_floorplan(ax, fp)
+            ax.set_title(
+                f"{label}\n平均: {inner_stall.mean():.2f}% | 峰值: {inner_stall.max():.2f}%"
+            )
+            ax.set_xlabel("宽度 (m)")
+            ax.set_ylabel("高度 (m)")
 
-    plt.tight_layout()
-    stall_cmp_path = output_dir / f"{preset_name}_stall_comparison.png"
-    plt.savefig(stall_cmp_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
+        plt.tight_layout()
+        stall_cmp_path = output_dir / f"{preset_name}_stall_comparison.png"
+        plt.savefig(stall_cmp_path, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.close(fig)
     paths["stall_comparison"] = str(stall_cmp_path)
 
     rssi_before_npy = output_dir / f"{preset_name}_rssi_before.npy"

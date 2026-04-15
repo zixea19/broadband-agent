@@ -488,6 +488,7 @@ async def _adapt_body(
                     "stderr": stderr[:500],
                     "completedAt": completed_at,
                     "durationMs": duration_ms,
+                    "error": _is_error_result(result_raw),
                 }
                 if step_for_evt is not None:
                     step_for_evt.sub_steps.append(sub)
@@ -614,6 +615,36 @@ async def _adapt_body(
         for _mid in list(member_text_buffers.keys()):
             _flush_member_text(_mid)
 
+    # ── 兜底：清理 ToolCallStarted 无对应 ToolCallCompleted 的 pending 调用 ──────
+    # 场景：LLM 传 args 为字符串时 agno pydantic 校验失败，可能不发 ToolCallCompleted；
+    # 此处将残留 pending 条目补充为 error sub_step，保证历史回放数据完整。
+    for _key, _args_list in list(skill_start_args.items()):
+        _agent_id_raw, _sn = _key.rsplit(":", 1)
+        _step_agg = steps_by_id.get(_agent_id_raw)
+        _t_list = skill_start_times.get(_key, [])
+        for _call_info in _args_list:
+            _t0 = _t_list.pop(0) if _t_list else None
+            _dur = int((time.monotonic() - _t0) * 1000) if _t0 else 0
+            _step_id = _step_agg.step_id if _step_agg else "unknown"
+            _sub = {
+                "subStepId": f"{_step_id}_{_sn}",
+                "name": _sn,
+                "scriptPath": _call_info.get("scriptPath", ""),
+                "callArgs": _call_info.get("callArgs", []),
+                "stdout": "",
+                "stderr": "工具调用未完成（args 类型错误或调用中断）",
+                "completedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "durationMs": _dur,
+                "error": True,
+            }
+            if _step_agg is not None:
+                _step_agg.sub_steps.append(_sub)
+                _step_agg.items.append({"type": "sub_step", "data": _sub})
+            yield format_sse("sub_step", {"stepId": _step_id, **_sub}), agg
+            api_log.warning(f"pending tool call 兜底: key={_key!r} scriptPath={_sub['scriptPath']!r}")
+    skill_start_args.clear()
+    skill_start_times.clear()
+
     # 兜底 done
     if agg.status == "streaming":
         if thinking_start and thinking_end:
@@ -641,6 +672,28 @@ def _extract_stdout_stderr(raw: Any) -> tuple[str, str]:
     stdout = str(parsed.get("stdout", "")).strip()
     stderr = str(parsed.get("stderr", "")).strip()
     return stdout, stderr
+
+
+def _is_error_result(raw: Any) -> bool:
+    """判断 tool result 是否为错误结果。
+
+    两种情况视为错误：
+    1. raw 不是合法 JSON（agno pydantic 校验失败时返回 traceback 字符串）
+    2. raw 是 JSON 且顶层 status == "error"
+    """
+    import json as _json
+    if isinstance(raw, dict):
+        return raw.get("status") == "error"
+    if isinstance(raw, str):
+        try:
+            parsed = _json.loads(raw)
+            if isinstance(parsed, dict):
+                return parsed.get("status") == "error"
+            return False
+        except Exception:
+            # 非 JSON → 通常是 pydantic / 系统级错误文本
+            return True
+    return False
 
 
 def _parse_stdout(raw: Any) -> Any:
