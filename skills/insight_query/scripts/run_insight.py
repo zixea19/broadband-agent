@@ -96,6 +96,16 @@ def _safe_parse_json(raw: str) -> dict:
         except json.JSONDecodeError:
             pass
 
+    # 第 1.5 层：修复 LLM 将 args 列表结束符 ] 混入 JSON 对象末尾
+    # 场景：LLM 生成 args=['{"key":"val"]'] 而非 args=['{"key":"val"}']
+    # — 外层 list 的 ] 被误写入 JSON 字符串里，导致对象以 ] 结尾而非 }
+    _candidate = raw.strip()
+    if _candidate.startswith("{") and _candidate.endswith("]"):
+        try:
+            return json.loads(_candidate[:-1] + "}")
+        except json.JSONDecodeError:
+            pass
+
     # 第 2 层：Windows cmd 有时会吃掉 \" 变成空，尝试修复常见模式
     # 例如 {insight_type: OutstandingMin} → {"insight_type": "OutstandingMin"}
     repaired = raw
