@@ -181,7 +181,7 @@ def inject_dynamic_seed(model) -> None:
         # 序列化层可能被 coerce 成 float，导致百炼服务端报 "'seed' must be Integer"（400）。
         # 使用专用字段后，agno 的 get_request_params() 直接读取 self.seed（Optional[int]）
         # 并放入 base_params，类型不经过任何 dict 转换，始终保持 Python int。
-        _SEED_MAX = 9007199254740991  # 2**53 - 1，IEEE 754 safe integer
+        _SEED_MAX = 2147483647  # 2**31 - 1，32 位整数上限，各平台 JSON 无歧义
         self.seed = random.randint(0, _SEED_MAX)
         # 同步清除 request_params 中残留的 seed 键，避免 update() 覆盖专用字段值
         _rp = getattr(self, "request_params", None)
