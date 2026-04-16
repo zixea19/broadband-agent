@@ -176,15 +176,18 @@ def inject_dynamic_seed(model) -> None:
     _is_bound = _current_bound is not None
 
     async def _seeded_ainvoke_stream(self, messages, *args, **kwargs):
-        # 合并随机 seed 到现有 request_params，保留静态参数
-        # 上限使用 2**53-1（IEEE 754 double 安全整数范围）而非 2**63-1：
-        # 超过此值的 Python int 经过 JSON 序列化再由 JavaScript / float64 解析后
-        # 会变成浮点数（9.22e18），百炼服务端收到 float 后报 "must be Integer"。
-        _SEED_MAX = 9007199254740991  # 2**53 - 1
-        self.request_params = {
-            **(getattr(self, "request_params", None) or {}),
-            "seed": random.randint(0, _SEED_MAX),
-        }
+        # 直接赋值 agno 的专用 Optional[int] 字段 self.seed，不走 request_params dict 路径。
+        # 背景：request_params 是 Dict[str, Any]，其中的 int 在 openai SDK 的 Pydantic
+        # 序列化层可能被 coerce 成 float，导致百炼服务端报 "'seed' must be Integer"（400）。
+        # 使用专用字段后，agno 的 get_request_params() 直接读取 self.seed（Optional[int]）
+        # 并放入 base_params，类型不经过任何 dict 转换，始终保持 Python int。
+        _SEED_MAX = 9007199254740991  # 2**53 - 1，IEEE 754 safe integer
+        self.seed = random.randint(0, _SEED_MAX)
+        # 同步清除 request_params 中残留的 seed 键，避免 update() 覆盖专用字段值
+        _rp = getattr(self, "request_params", None)
+        if isinstance(_rp, dict) and "seed" in _rp:
+            self.request_params = {k: v for k, v in _rp.items() if k != "seed"}
+        logger.debug(f"dynamic seed set: {self.seed} (type={type(self.seed).__name__})")
         if _is_bound:
             # 调用已绑定的实例方法（无需再传 self）
             async for chunk in _current_bound(messages, *args, **kwargs):
