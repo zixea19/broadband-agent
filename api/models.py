@@ -80,10 +80,16 @@ class Step(BaseModel):
 # ─── 右侧渲染块 ───────────────────────────────────────────────────────────────
 
 class ChartItem(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     chartId: str
     title: str
     conclusion: str
     echartsOption: dict
+    phaseId: Optional[int] = None
+    stepId: Optional[int] = None
+    phaseName: Optional[str] = None
+    stepName: Optional[str] = None
 
 
 class InsightRenderData(BaseModel):
