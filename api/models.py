@@ -114,7 +114,22 @@ class ImageRenderBlock(BaseModel):
     renderData: ImageRenderData
 
 
-RenderBlock = Union[InsightRenderBlock, ImageRenderBlock]
+class ExperienceAssuranceRenderData(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    businessType: str = ""
+    applicationType: str = ""
+    application: str = ""
+    isMock: bool = True
+    taskData: dict = {}
+
+
+class ExperienceAssuranceRenderBlock(BaseModel):
+    renderType: Literal["experience_assurance"]
+    renderData: ExperienceAssuranceRenderData
+
+
+RenderBlock = Union[InsightRenderBlock, ImageRenderBlock, ExperienceAssuranceRenderBlock]
 
 
 # ─── 消息 ─────────────────────────────────────────────────────────────────────
