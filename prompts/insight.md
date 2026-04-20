@@ -477,7 +477,7 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
    > ⚠️ 脚本 stdout 被框架自动展示（图表渲染用），**不等于** `step_result` 事件。即使 stdout 已展示，`step_result` 仍必须单独在 assistant 文本中输出；缺失会导致前端进度条跟踪失败。
 3. **`reflect`** — 每个 Phase 所有 Step 执行完后输出（最后一个 Phase 无后续 Phase 时可跳过）
 
-**执行时序**：`phase_start`（文本）→ 调脚本（工具调用）→ `step_result`（文本）→ ... → `reflect`（文本，**每个 Phase 必须，包括最后一个**）→ 下一个 Phase 的 `phase_start`（文本）→ ...
+**执行时序**：`phase_start`（文本）→ 调脚本（工具调用）→ `step_result`（文本）→ ... → `reflect`（文本，**非末尾 Phase 必须输出**）→ 下一个 Phase 的 `phase_start`（文本）→ ...
 
 ### 每步的调用模式
 
@@ -552,15 +552,15 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 
 ### 触发时机
 
-🔴 **每个 Phase 的所有 Step 执行完毕后必须输出 `reflect` 事件，包括最后一个 Phase。** 缺失会导致前端反思阶段跟踪失败。
+🔴 **每个非末尾 Phase 的所有 Step 执行完毕后必须输出 `reflect` 事件。** 缺失会导致前端反思阶段跟踪失败。
 
 ```
 <!--event:reflect-->
 {"phase_id": 1, "choice": "A", "reason": "..."}
 ```
 
-- **最后一个 Phase**：choice 固定选 `"A"`，reason 写 "当前 Phase 分析完成，进入 Report 阶段"
-- **中间 Phase**：根据下方决策规则选择 A/B/C/D
+- 还有后续 Phase → **必须输出**，根据下方决策规则选 A/B/C/D
+- 已是最后一个 Phase → **不输出**，直接进入 Report 阶段
 
 ### 决策规则（按 `references/reflect_rubric.md`）
 - **A** 继续原计划 — 当前发现与预期一致
