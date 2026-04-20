@@ -462,17 +462,22 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
 
 ### 🔴 事件输出（强制，不可跳过）
 
-每步执行时**必须**按 §2「事件输出协议」输出对应的 `<!--event:xxx-->` 标记。Execute 阶段涉及 3 种事件：
+每步执行时**必须**在 assistant 文本中输出对应的 `<!--event:xxx-->` 标记，**与脚本工具调用相互独立，不可省略**。Execute 阶段涉及 3 种事件：
 
-1. **`phase_start`** — 每个 Phase 开始前输出（示例见 §2 事件表）
-2. **`step_result`** — 每个 Step 脚本调用完成后输出，**必须包含 `phase_id` 和 `step_id`**：
+1. **`phase_start`** — 每个 Phase **第一次脚本调用之前**，必须先在 assistant 文本中输出：
+   ```
+   <!--event:phase_start-->
+   {"phase_id": 1, "name": "定位低分PON口", "status": "running"}
+   ```
+2. **`step_result`** — 每个 Step 脚本调用**完成后**，必须在 assistant 文本中输出，**必须包含 `phase_id` 和 `step_id`**：
    ```
    <!--event:step_result-->
-   {"phase_id": 1, "step_id": 1, "phase_name": "L1-定位低分PON口", "step_name": "找出 CEI_score 最低的 PON 口", "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}, "status": "ok"}
+   {"phase_id": 1, "step_id": 1, "phase_name": "定位低分PON口", "step_name": "找出 CEI_score 最低的 PON 口", "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 288b6c71-...（54.08）", "found_entities": {"portUuid": ["288b6c71-...", "1c86d285-..."]}, "status": "ok"}
    ```
-3. **`reflect`** — 每个 Phase 所有 Step 执行完后输出
+   > ⚠️ 脚本 stdout 被框架自动展示（图表渲染用），**不等于** `step_result` 事件。即使 stdout 已展示，`step_result` 仍必须单独在 assistant 文本中输出；缺失会导致前端进度条跟踪失败。
+3. **`reflect`** — 每个 Phase 所有 Step 执行完后输出（最后一个 Phase 无后续 Phase 时可跳过）
 
-**执行时序**：`phase_start` → 调脚本 → `step_result` → ... → `reflect` → 下一个 Phase 的 `phase_start` → ...
+**执行时序**：`phase_start`（文本）→ 调脚本（工具调用）→ `step_result`（文本）→ ... → `reflect`（文本）→ 下一个 Phase 的 `phase_start`（文本）→ ...
 
 ### 每步的调用模式
 
@@ -500,7 +505,7 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 🔴 **必须**在 payload 中携带以下 4 个字段，脚本会原样透传到 stdout JSON，供前端关联 step_result 事件：
 - `"phase_id"`：当前 Phase 编号（来自 MacroPlan）
 - `"step_id"`：当前 Step 编号
-- `"phase_name"`：当前 Phase 名称（来自 MacroPlan `phases[i].name`，如 `"L1-定位低分PON口"`）
+- `"phase_name"`：当前 Phase 名称（来自 MacroPlan `phases[i].name`，如 `"定位低分PON口"`）
 - `"step_name"`：当前 Step 目的（来自 Step 数组的 `rationale`，如 `"找出 CEI_score 最低的 PON 口"`）
 
 **NL2Code 步骤**（当现有 12 种函数无法满足时）：
@@ -663,6 +668,11 @@ InsightAgent 产出 3 类输出，各自独立、互不替代：
 - 包含 `chart_configs`（ECharts option JSON）、`filter_data`、报告 Markdown
 - stdout 中的 `phase_id` / `step_id` 字段用于关联 step_result 事件
 - **禁止**在 assistant 文本中复述脚本 stdout 的完整内容
+
+> 🔴 **stdout 自动展示 ≠ `step_result` 事件，两者不可互相替代**
+> - **脚本 stdout**（自动展示）= 图表渲染通道，供前端渲染 ECharts / 数据表格
+> - **`<!--event:step_result-->`**（assistant 文本）= 进度追踪通道，供前端进度条感知每步完成状态
+> - 即使脚本已成功执行且 stdout 已自动展示，**`step_result` 事件仍然必须在 assistant 文本中单独输出**，缺失会导致前端进度条跟踪失败。`done` 事件同理。
 
 ### 8.2 事件标记（assistant 文本中输出）
 - 按 §2「事件输出协议」在 assistant 文本中输出 `<!--event:xxx-->` + JSON
