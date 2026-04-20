@@ -1,22 +1,23 @@
 # 家宽网络调优智能助手
 
-基于 [agno](https://github.com/agno-agi/agno) 框架构建的家宽网络调优场景多智能体系统，采用 **Team (coordinate 模式) + 15 个业务 Skills** 的分层架构。
+基于 [agno](https://github.com/agno-agi/agno) 框架构建的家宽网络调优场景多智能体系统，采用 **Team (coordinate 模式) + 16 个业务 Skills** 的分层架构。
 
 ## 功能特性
 
-支持三类任务入口：
+支持四类任务入口：
 
 1. **综合目标** — 用户描述业务目标，PlanningAgent 追问画像 → 产出分段方案 → 并行派发多个 Provisioning 实例执行
 2. **数据洞察** — InsightAgent 按 Plan → Decompose → Execute → Reflect → Report 五阶段产出数据 / 归因 / ECharts 图表 / Markdown 报告，结果可回流 Planning 生成优化方案
 3. **单点功能** — Orchestrator 关键词路由直达对应 Provisioning 实例（WIFI 仿真 / 差异化承载 / 故障定界 / 远程操作 / CEI 权重配置）
+4. **编辑方案** — 用户要求修改当前保障方案的具体字段，Orchestrator 路由至 PlanningAgent（跳过 goal_parsing），通过 plan_store 从 DB 读取当前方案，应用编辑指令后输出修改后的完整方案
 
 ## 架构
 
 ```
 OrchestratorTeam (leader, coordinate 模式)
-  ├─ PlanningAgent            (goal_parsing + plan_design + plan_review)
+  ├─ PlanningAgent            (goal_parsing + plan_design + plan_review + plan_store)
   ├─ InsightAgent             (insight_plan + insight_decompose + insight_query
-  ���                            + insight_nl2code + insight_reflect + insight_report)
+  │                              + insight_nl2code + insight_reflect + insight_report)
   ├─ ProvisioningWifiAgent    (wifi_simulation)              ← 单 Skill 内部 2 能力 (RSSI 热力图 + 卡顿率栅格) ± AP 补点对比
   ├─ ProvisioningDeliveryAgent (experience_assurance)
   └─ ProvisioningCeiChainAgent (cei_pipeline + cei_score_query
@@ -30,6 +31,7 @@ OrchestratorTeam (leader, coordinate 模式)
 
 - **`plan_design`**：Instructional 范式 — 纯 SKILL.md + few-shot 样例，**无脚本**，由 LLM 直接生成分段 Markdown 方案
 - **`cei_pipeline / cei_score_query / fault_diagnosis / remote_optimization / experience_assurance`**：Tool Wrapper 范式 — 封装 FAE / FAN 平台真实接口，CLI args 驱动，依赖 `fae_poc/` 共享的 NCELogin + config.ini（`fault_diagnosis` 脚本内部自驱 start+poll+query 三阶段，Agent 仅感知一次 tool call；`experience_assurance` 由 Provisioning 层完成"业务字段 → UUID 参数"映射，映射表见 `experience_assurance/references/assurance_parameters.md`）
+- **`plan_store`**：Tool Wrapper 范式 — 封装 `data/api.db` 的保障方案读写操作，`read_plan.py` 读取当前方案，`save_plan.py` 解析 5 段式方案文本并持久化；仅 PlanningAgent 调用（场景 1/2 确认后保存、场景 4 编辑前读取）
 - **`goal_parsing / plan_review`**：Inversion + Reviewer — 有状态/确定性任务保留脚本
 - **`insight_*`**（6 个 Skill）：Pipeline — Plan → [Decompose → Execute → Reflect] × N Phase → Report 驱动，接入 `ce_insight_core` 真实计算内核（三元组查询 + 12 种洞察函数 + NL2Code 沙箱）
 - **`wifi_simulation`**：Pipeline + Generator — 接入自包含的 `home_wifi_engine`，按 `compare` 开关分派 basic（RSSI 热力图 + 卡顿率栅格）或 compare（AP 补点前后对比图 + 4 份 JSON 矩阵）模式，stdout 为单行结构化 JSON
@@ -106,10 +108,11 @@ $env:NO_PROXY="localhost,127.0.0.1"
 │   ├── planning.md         # PlanningAgent 作业手册
 │   ├── insight.md          # InsightAgent 作业手册
 │   └── provisioning.md     # 3 个 Provisioning 实例共享的作业手册
-├── skills/                 # 15 个业务 Skill (LocalSkills 自动扫描)
+├── skills/                 # 16 个业务 Skill (LocalSkills 自动扫描)
 │   ├── goal_parsing/       # 槽位追问引擎
 │   ├── plan_design/        # 方案设计 (Instructional, 无脚本)
 │   ├── plan_review/        # 方案评审 (violations + recommendations)
+│   ├── plan_store/         # 方案持久化 (Tool Wrapper, read_plan + save_plan, 对接 data/api.db)
 │   ├── cei_pipeline/       # CEI 权重配置下发 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── cei_score_query/    # CEI 体验查询 (Tool Wrapper, 对接 FAE 真实接口)
 │   ├── fault_diagnosis/    # 故障诊断 (Tool Wrapper, 对接 FAE 真实接口, 内部 start+poll+query)
@@ -164,4 +167,4 @@ uv run pytest tests/test_smoke.py -v
 pytest tests/test_smoke.py -v
 ```
 
-49 项冒烟测试，覆盖配置加载、15 个 Skill 脚本执行、UI 渲染（流式事件处理 + 思考隔离 + 工具调用折叠）、Team 装配（5 SubAgent + 正确 Skill 子集）、可观测性（SQLite schema + trace 双写）。
+51 项冒烟测试，覆盖配置加载、16 个 Skill 脚本执行、UI 渲染（流式事件处理 + 思考隔离 + 工具调用折叠）、Team 装配（5 SubAgent + 正确 Skill 子集）、可观测性（SQLite schema + trace 双写）。

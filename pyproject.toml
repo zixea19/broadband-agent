@@ -14,7 +14,7 @@ dependencies = [
     "openai>=1.0.0",
     # ── Web UI ──
     "gradio>=4.0.0",
-    "httptools>=0.6",               # uvicorn (Gradio 内部) 在 Windows 上需要兼容版本
+    "httptools>=0.6", # uvicorn (Gradio 内部) 在 Windows 上需要兼容版本
     # ── FastAPI 层 (backend/api/) ──
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
@@ -24,7 +24,7 @@ dependencies = [
     "pyyaml>=6.0",
     "jinja2>=3.0",
     "aiofiles>=23.0",
-    "sqlalchemy>=2.0",              # agno.db.sqlite 需要，agno 未声明为强制依赖
+    "sqlalchemy>=2.0", # agno.db.sqlite 需要，agno 未声明为强制依赖
     # ── 科学计算栈 (data_insight / ce_insight_core) ──
     "pandas>=2.0",
     "numpy>=1.24",
@@ -38,6 +38,9 @@ dependencies = [
     "matplotlib>=3.7",
     "typer>=0.9",
     "rich>=13.0",
+    "fae-demo",
+    "requests>=2.33.1",
+    "cei-query",
 ]
 
 [dependency-groups]
@@ -46,9 +49,15 @@ dev = [
     "ruff>=0.1",
 ]
 
+[[tool.uv.index]]  # 为本项目修改镜像源
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
 # uv 从本地 vendor 路径解析 ce-insight-core，editable 模式安装
 [tool.uv.sources]
+fae-demo = { path = "vendor/fae_sim", editable = true }
 ce-insight-core = { path = "vendor/ce_insight_core", editable = true }
+cei-query = { path = "vendor/cei_query-0.0.post15-py3-none-any.whl" }
 
 # ── ruff 配置 ──
 [tool.ruff]
