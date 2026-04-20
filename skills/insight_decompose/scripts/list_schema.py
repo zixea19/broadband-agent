@@ -17,8 +17,7 @@
         "op": "list_schema",
         "table": "day",
         "focus_dimensions": [...],
-        "schema_markdown": "...文字 schema...",
-        "all_fields": [...]
+        "schema_markdown": "...文字 schema..."
     }
 """
 
@@ -27,8 +26,6 @@ import re
 import sys
 from typing import Any
 
-# Windows 兼容：保留默认编码（Linux/Mac 是 UTF-8，Windows 是 GBK），
-# 遇到不可编码字符（如 emoji）替换为 ? 而不是抛 UnicodeEncodeError 崩溃
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(errors="replace")
 
@@ -50,7 +47,6 @@ except ImportError as exc:
 
 
 def _safe_parse_json(raw: str) -> dict:
-    """带修复的 JSON 解析：先直接解析，失败则尝试修复常见 shell 转义损坏后重试。"""
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -69,7 +65,6 @@ def _safe_parse_json(raw: str) -> dict:
         pass
     try:
         from json_repair import repair_json
-
         return json.loads(repair_json(raw, return_objects=False))
     except (ImportError, Exception):
         pass
@@ -84,7 +79,6 @@ def _safe_parse_json(raw: str) -> dict:
 
 
 def run(payload_json: str) -> str:
-    """主入口：解析 payload → 查询 schema → 返回。"""
     try:
         payload: dict[str, Any] = _safe_parse_json(payload_json) if payload_json else {}
     except json.JSONDecodeError as exc:
@@ -101,10 +95,8 @@ def run(payload_json: str) -> str:
     try:
         if table == "day":
             schema_md = cic.get_pruned_schema(focus) if focus else cic.get_full_day_schema()
-            all_fields = sorted(cic.get_all_day_fields())
         else:
             schema_md = cic.get_minute_schema(focus)
-            all_fields = sorted(cic.get_all_minute_fields())
     except Exception as exc:
         return _err(f"获取 schema 失败: {type(exc).__name__}: {exc}")
 
@@ -116,7 +108,6 @@ def run(payload_json: str) -> str:
             "table": table,
             "focus_dimensions": focus,
             "schema_markdown": schema_md,
-            "all_fields": all_fields,
         },
         ensure_ascii=False,
     )
