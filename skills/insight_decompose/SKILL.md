@@ -19,6 +19,8 @@ description: "Phase 分解：查询天表/分钟表 Schema，为当前 Phase 拆
 
 ## How to Use
 
+> 🔴 **前置门控（Phase N ≥ 2 时必须先执行）**：进入本 Phase 的 Decompose 之前，先确认上一个 Phase 的 `<!--event:reflect-->` 已在 assistant 文本中输出。若未输出，**必须先输出 reflect 事件，再开始本 Phase 的 Decompose**，不得跳过。
+
 ### Step 1 — 查询 Schema（确认当前 Phase 可用的字段）
 ```
 get_skill_script(
