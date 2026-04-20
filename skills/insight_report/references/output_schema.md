@@ -19,7 +19,7 @@
   "phases": [
     {
       "phase_id": 1,
-      "name": "L1-定位低分PON口",
+      "name": "定位低分PON口",
       "milestone": "识别CEI最低的PON口列表",
       "table_level": "day",
       "steps": [

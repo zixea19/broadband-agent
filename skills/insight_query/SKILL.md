@@ -40,7 +40,7 @@ payload：
   "table_level": "day",
   "phase_id": 1,
   "step_id": 1,
-  "phase_name": "L1-定位低分PON口",
+  "phase_name": "定位低分PON口",
   "step_name": "找出 CEI_score 最低的 PON 口"
 }
 ```
@@ -73,18 +73,26 @@ payload：
   "data_shape": [3857, 2],
   "phase_id": 1,
   "step_id": 1,
-  "phase_name": "L1-定位低分PON口",
+  "phase_name": "定位低分PON口",
   "step_name": "找出 CEI_score 最低的 PON 口"
 }
 ```
 
 **`chart_configs` 包含完整的 ECharts option JSON，Agent 必须原样保留，禁止改写。**
 
-每个 Step 执行完后，在 assistant 消息中输出精简摘要：
-```json
-<!--event:step_result-->
-{"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 uuid-a（54.08）", "found_entities": {"portUuid": ["uuid-a", "uuid-b"]}}
+**每个 Phase 开始前**，必须先在 assistant 文本中输出 `phase_start` 事件（在第一次调用脚本之前）：
 ```
+<!--event:phase_start-->
+{"phase_id": 1, "name": "定位低分PON口", "status": "running"}
+```
+
+**每个 Step 脚本调用完成后**，必须在 assistant 文本中输出 `step_result` 事件：
+```
+<!--event:step_result-->
+{"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 uuid-a（54.08）", "found_entities": {"portUuid": ["uuid-a", "uuid-b"]}, "status": "ok"}
+```
+
+> 🔴 **`step_result` 必须独立输出，不被 stdout 替代**：`run_insight.py` 的 stdout 由框架自动展示（图表渲染通道）；`step_result` 是独立的进度追踪信号，前端进度条依赖它。即使 stdout 已展示，每步执行后仍必须在 assistant 文本中输出 `step_result`，缺失会导致进度跟踪失败。`done` 事件同理。
 
 ### 纯数据查询
 ```
