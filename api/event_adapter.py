@@ -755,6 +755,35 @@ async def _adapt_body(
             _flush_reasoning()
         for _mid in list(member_text_buffers.keys()):
             _flush_member_text(_mid)
+        # 兜底数据补全：error 路径提前 return 时，将 pending tool call 写入 agg.steps，
+        # 保证 DB 落库的 steps 字段完整，前端历史回放可正常渲染工具调用记录。
+        # 注意：此处只做数据更新，不 yield SSE（finally 块禁止 yield）；
+        # SSE sub_step 事件仍由正常路径（下方循环）负责。
+        if agg.status == "error" and skill_start_args:
+            for _key, _args_list in list(skill_start_args.items()):
+                _agent_id_raw, _sn = _key.rsplit(":", 1)
+                _step_agg = steps_by_id.get(_agent_id_raw)
+                _t_list = skill_start_times.get(_key, [])
+                for _call_info in _args_list:
+                    _t0 = _t_list.pop(0) if _t_list else None
+                    _dur = int((time.monotonic() - _t0) * 1000) if _t0 else 0
+                    _step_id = _step_agg.step_id if _step_agg else "unknown"
+                    _sub = {
+                        "subStepId": f"{_step_id}_{_sn}",
+                        "name": _sn,
+                        "scriptPath": _call_info.get("scriptPath", ""),
+                        "callArgs": _call_info.get("callArgs", []),
+                        "stdout": "",
+                        "stderr": "工具调用未完成（args 类型错误或调用中断）",
+                        "completedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "durationMs": _dur,
+                        "error": True,
+                    }
+                    if _step_agg is not None:
+                        _step_agg.sub_steps.append(_sub)
+                        _step_agg.items.append({"type": "sub_step", "data": _sub})
+            skill_start_args.clear()
+            skill_start_times.clear()
 
     # ── 兜底：清理 ToolCallStarted 无对应 ToolCallCompleted 的 pending 调用 ──────
     # 场景：LLM 传 args 为字符串时 agno pydantic 校验失败，可能不发 ToolCallCompleted；
