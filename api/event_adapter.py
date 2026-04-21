@@ -732,6 +732,8 @@ async def _adapt_body(
                 logger.error(f"Agent RunError: type={error_type} content={content!r} additional_data={additional_data} full={event}")
                 agg.status = "error"
                 agg.error_message = msg
+                if not agg.content:
+                    agg.content = msg or "工具调用出错，请重试"
                 if tracer is not None:
                     tracer.error(msg)
                 yield format_sse("error", {"message": msg}), agg
@@ -741,6 +743,8 @@ async def _adapt_body(
         logger.exception("event_adapter 异常")
         agg.status = "error"
         agg.error_message = str(exc)
+        if not agg.content:
+            agg.content = f"Agent 执行失败：{exc}"
         if tracer is not None:
             tracer.error(str(exc))
         yield format_sse("error", {"message": f"Agent 执行失败：{exc}"}), agg

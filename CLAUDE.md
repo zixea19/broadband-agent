@@ -58,7 +58,7 @@
 类型：`feat` | `fix` | `refactor` | `docs` | `skill`（SKILL.md/scripts/references）| `test` | `config`
 
 - 禁止 `--force` 推送到 main/master
-- 使用 `git push -u origin <branch>` 通过 PAT URL 直接推送
+- 使用 `git push -u github <branch>` 通过 PAT URL 直接推送（`github` remote 已配置 PAT，`origin` 为本地代理仅用于 fetch）
 - 严禁使用 GitHub MCP Server 工具（mcp__github__push_files 等）提交或推送代码
 - 新增/删除模块、架构或目录结构变更时必须同步更新 README.md
 
