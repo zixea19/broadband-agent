@@ -252,6 +252,31 @@ class Tracer:
             is_leader=is_leader,
         )
 
+    # ─── LLM 单次调用用量 ────────────────────────────────────────────
+
+    def llm_usage(
+        self,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        total_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        agent: str = "",
+        is_leader: bool = False,
+    ) -> None:
+        """记录单次 LLM API 调用的 token 用量。由 ModelRequestCompleted 事件触发。"""
+        self.trace(
+            "llm_usage",
+            {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+                "reasoning_tokens": reasoning_tokens,
+            },
+            agent=agent,
+            is_leader=is_leader,
+        )
+
     # ─── SubAgent 交互 ──────────────────────────────────────────────
 
     def member_content(self, member_name: str, content: str) -> None:

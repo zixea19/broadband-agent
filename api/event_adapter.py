@@ -665,17 +665,37 @@ async def _adapt_body(
                     )
                 continue
 
+            # ── LLM 调用计量：每次 LLM API 调用结束时触发，leader + member 均有 ──
+            # Team leader  → event 类型 "TeamModelRequestCompleted"，_event_type() 剥去 "Team" 前缀后为 "ModelRequestCompleted"
+            # Member agent → event 类型 "ModelRequestCompleted"，_event_type() 原样返回
+            # agno team/_run.py 从不调用 accumulate_model_metrics，所以 RunCompletedEvent.metrics
+            # 里的 token 字段永远是 0；唯一可靠的 token 来源就是这里的逐次事件。
+            if etype == "ModelRequestCompleted":
+                call_input = getattr(event, "input_tokens", 0) or 0
+                call_output = getattr(event, "output_tokens", 0) or 0
+                call_total = getattr(event, "total_tokens", 0) or 0
+                call_reasoning = getattr(event, "reasoning_tokens", 0) or 0
+                agg.input_tokens += call_input
+                agg.output_tokens += call_output
+                agg.total_tokens += call_total
+                agg.reasoning_tokens += call_reasoning
+                # 每次 LLM 调用写一条 llm_usage trace，SubAgent 各自记账
+                if tracer is not None and (call_input or call_output or call_total):
+                    tracer.llm_usage(
+                        input_tokens=call_input,
+                        output_tokens=call_output,
+                        total_tokens=call_total,
+                        reasoning_tokens=call_reasoning,
+                        agent=agent_name,
+                        is_leader=leader,
+                    )
+                continue
+
             # ── done ──────────────────────────────────────────────────────
             if etype == "RunCompleted" and leader:
                 if reasoning_buffer:
                     _flush_reasoning()
-                # 提取累计 token 用量（RunMetrics 是所有 LLM 调用的累加）
-                metrics = getattr(event, "metrics", None)
-                if metrics is not None:
-                    agg.input_tokens = getattr(metrics, "input_tokens", 0) or 0
-                    agg.output_tokens = getattr(metrics, "output_tokens", 0) or 0
-                    agg.total_tokens = getattr(metrics, "total_tokens", 0) or 0
-                    agg.reasoning_tokens = getattr(metrics, "reasoning_tokens", 0) or 0
+                # agg.input/output/total/reasoning_tokens 已由上方 ModelRequestCompleted 逐次累加
                 # leader 终结 → trace.response + sessions.db.messages 落 assistant
                 if tracer is not None and agg.content:
                     tracer.response(
