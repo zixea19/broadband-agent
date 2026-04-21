@@ -25,8 +25,9 @@
         "insight_type": "...",
         "significance": 0.0-1.0,
         "description": str | dict,
-        "filter_data": [...最多 50 条...],
-        "chart_configs": {ECharts option},
+        "filter_data": [...最多 5 条...],
+        "has_chart": true | false,
+        "chart_file": "/tmp/..." | null,
         "fix_warnings": [...],
         "found_entities": {"portUuid": [...]},
         "data_shape": [row, col],
@@ -36,10 +37,12 @@
         "step_name": str | null
     }
 
-`chart_configs` 原样透传 ce_insight_core 的 ECharts option，**禁止改写**。
+`chart_configs` 写入临时文件，stdout 只留 has_chart + chart_file，
+event_adapter 从文件读取后立即删除，LLM 上下文不含 ECharts JSON。
 """
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -66,8 +69,8 @@ except ImportError as exc:
     )
     sys.exit(1)
 
-_MAX_RECORDS = 15
-_MAX_OUTPUT_BYTES = 60_000   # 单次 stdout 上限；超出时截断 chart_configs series data
+_MAX_RECORDS = 5
+_MAX_OUTPUT_BYTES = 60_000   # 单次 stdout 上限；超出时截断 description
 _DAY_TABLE_ROW_WARN = 5_000  # 天表行数超过此值时追加 warning（无论 Phase 几）
 
 
@@ -97,8 +100,6 @@ def _safe_parse_json(raw: str) -> dict:
             pass
 
     # 第 1.5 层：修复 LLM 将 args 列表结束符 ] 混入 JSON 对象末尾
-    # 场景：LLM 生成 args=['{"key":"val"]'] 而非 args=['{"key":"val"}']
-    # — 外层 list 的 ] 被误写入 JSON 字符串里，导致对象以 ] 结尾而非 }
     _candidate = raw.strip()
     if _candidate.startswith("{") and _candidate.endswith("]"):
         try:
@@ -107,9 +108,7 @@ def _safe_parse_json(raw: str) -> dict:
             pass
 
     # 第 2 层：Windows cmd 有时会吃掉 \" 变成空，尝试修复常见模式
-    # 例如 {insight_type: OutstandingMin} → {"insight_type": "OutstandingMin"}
     repaired = raw
-    # 修复未加引号的键名
     repaired = re.sub(r"(?<=[{,])\s*([a-zA-Z_]\w*)\s*:", r' "\1":', repaired)
     try:
         return json.loads(repaired)
@@ -275,10 +274,7 @@ def run(payload_json: str) -> str:
         fixed_config["measures"] = query_config.get("measures", [])
 
     # 2. 从**修复后**的 config 推导默认的 value_columns / group_column
-    #    （用 fixed_config 而非 query_config，确保 query_fixer 的字段替换被同步，
-    #    避免后续 NEEDS_GROUP 检查时拿到原始字段名而 df 列名是修复后的，导致误报）
     default_value_cols = [m.get("name") for m in fixed_config.get("measures", []) if m.get("name")]
-    # 兜底：fixer 清空 measures 时，回退到原始 query_config 的 measures
     if not default_value_cols:
         default_value_cols = [m.get("name") for m in query_config.get("measures", []) if m.get("name")]
     default_group_col = fixed_config.get("breakdown", {}).get("name", "")
@@ -300,18 +296,17 @@ def run(payload_json: str) -> str:
 
     df = dfs[0]
 
-    # 天表行数检测：任意 Phase 超阈值都加 warning，提示后续 Phase 应加过滤
+    # 天表行数检测：任意 Phase 超阈值都加 warning
     if table_level == "day" and len(df) > _DAY_TABLE_ROW_WARN:
         fix_warnings.append(
             f"天表查询返回 {len(df)} 行（超过 {_DAY_TABLE_ROW_WARN} 行警戒线），"
             "后续 Phase 请使用本次 found_entities 添加 dimensions 过滤，避免上下文溢出。"
         )
 
-    # 4. 列名兜底：修复后的字段名可能与 fixed_config 里的还有细微差异（如聚合后缀），
-    #    做最后一层模糊匹配（startswith 前缀匹配）
+    # 4. 列名兜底：修复后的字段名可能与 fixed_config 里的还有细微差异
     value_columns = _resolve_columns(df, value_columns)
 
-    # 2. 执行洞察
+    # 5. 执行洞察
     try:
         result = cic.run_insight(
             insight_type=insight_type,
@@ -324,11 +319,25 @@ def run(payload_json: str) -> str:
     except Exception as exc:
         return _err(f"run_insight 失败: {type(exc).__name__}: {exc}")
 
-    # 3. 提取 found_entities（供后续 step 下钻使用）
+    # 6. 提取 found_entities（供后续 step 下钻使用）
     found_entities = _extract_entities(df, group_column, result.get("filter_data", []))
 
-    # 4. 组装输出
+    # 7. 组装输出
     filter_data = result.get("filter_data", [])[:_MAX_RECORDS]
+
+    # chart_configs 写临时文件，stdout 只留 has_chart + chart_file
+    # event_adapter 从文件读取 ECharts option 后立即删除，LLM 上下文不含大体积 JSON
+    chart_configs_raw = result.get("chart_configs", {})
+    has_chart = bool(chart_configs_raw)
+    chart_file: str | None = None
+    if has_chart:
+        import tempfile as _tf
+        with _tf.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as _cf:
+            json.dump(chart_configs_raw, _cf, ensure_ascii=False, default=_json_default)
+            chart_file = _cf.name
+
     output: dict[str, Any] = {
         "status": "ok",
         "skill": "insight_query",
@@ -337,12 +346,11 @@ def run(payload_json: str) -> str:
         "significance": result.get("significance", 0.0),
         "description": result.get("description", ""),
         "filter_data": filter_data,
-        "chart_configs": result.get("chart_configs", {}),
+        "has_chart": has_chart,
+        "chart_file": chart_file,
         "fix_warnings": fix_warnings,
         "found_entities": found_entities,
         "data_shape": list(df.shape),
-        "value_columns_used": value_columns,
-        "group_column_used": group_column,
         "phase_id": payload.get("phase_id"),
         "step_id": payload.get("step_id"),
         "phase_name": payload.get("phase_name"),
@@ -405,39 +413,15 @@ def _json_default(obj: Any) -> Any:
 
 
 def _truncate_output_if_oversized(output: dict[str, Any]) -> dict[str, Any]:
-    """若序列化后超过 _MAX_OUTPUT_BYTES，逐级截断 chart_configs series data。
+    """若序列化后超过 _MAX_OUTPUT_BYTES，截断 description 转摘要。
 
-    截断顺序：
-      1. chart_configs 各 series 的 data 列表截半，直到达标或已压缩到空
-      2. description 若为 dict，转为摘要字符串
-    截断后在 fix_warnings 中追加提示，并置 truncated=True。
+    chart_configs 已移出 stdout（写临时文件），无需再压缩 series data。
     """
     raw = json.dumps(output, ensure_ascii=False, default=_json_default)
     if len(raw.encode("utf-8")) <= _MAX_OUTPUT_BYTES:
         return output
 
-    # 步骤 1：压缩 chart_configs.series[].data
-    chart = output.get("chart_configs") or {}
-    series_list = chart.get("series") if isinstance(chart, dict) else None
-    if isinstance(series_list, list):
-        for _round in range(10):  # 最多压缩 10 轮（每轮截半）
-            changed = False
-            for s in series_list:
-                data = s.get("data") if isinstance(s, dict) else None
-                if isinstance(data, list) and len(data) > 2:
-                    s["data"] = data[: max(2, len(data) // 2)]
-                    changed = True
-            if not changed:
-                break
-            raw = json.dumps(output, ensure_ascii=False, default=_json_default)
-            if len(raw.encode("utf-8")) <= _MAX_OUTPUT_BYTES:
-                output.setdefault("fix_warnings", []).append(
-                    f"chart_configs series data 因输出超限（>{_MAX_OUTPUT_BYTES}B）已截断。"
-                )
-                output["truncated"] = True
-                return output
-
-    # 步骤 2：description 转摘要
+    # description 若为 dict，转为摘要字符串
     desc = output.get("description")
     if isinstance(desc, dict):
         output["description"] = f"[已截断，原始 keys: {list(desc.keys())}]"
@@ -449,7 +433,7 @@ def _truncate_output_if_oversized(output: dict[str, Any]) -> dict[str, Any]:
             output["truncated"] = True
             return output
 
-    # 仍超限：标记 truncated，上层不应继续膨胀
+    # 仍超限：标记 truncated
     output.setdefault("fix_warnings", []).append(
         f"输出仍超过 {_MAX_OUTPUT_BYTES}B，请减少 measures 或添加 dimensions 过滤。"
     )

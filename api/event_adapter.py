@@ -21,6 +21,7 @@ M7 追加：experience_assurance 单事件聚合 —— 体验保障配置结果
 from __future__ import annotations
 
 import json as _json
+import os
 import shutil
 import time
 import uuid
@@ -873,7 +874,16 @@ def _emit_insight_render(
         return []
 
     if skill_name == "insight_query" and isinstance(parsed, dict):
-        echarts = parsed.get("chart_configs")
+        has_chart = parsed.get("has_chart", False)
+        chart_file = parsed.get("chart_file")
+        if not has_chart or not chart_file:
+            return []
+        try:
+            with open(chart_file, "r", encoding="utf-8") as _cf:
+                echarts = _json.load(_cf)
+            os.unlink(chart_file)
+        except Exception:
+            return []
         if not echarts:
             return []
         description = parsed.get("description", "")

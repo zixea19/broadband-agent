@@ -13,11 +13,10 @@
         "status": "ok" | "error",
         "skill": "insight_query",
         "op": "run_query",
-        "fixed_query_config": {...},
         "fix_warnings": [...],
         "data_shape": [row, col],
         "columns": [...],
-        "records": [...最多 50 条...],
+        "records": [...最多 3 条...],
         "summary": "文字摘要"
     }
 
@@ -30,8 +29,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# Windows 兼容：保留默认编码（Linux/Mac 是 UTF-8，Windows 是 GBK），
-# 遇到不可编码字符（如 emoji）替换为 ? 而不是抛 UnicodeEncodeError 崩溃
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(errors="replace")
 
@@ -51,11 +48,10 @@ except ImportError as exc:
     )
     sys.exit(1)
 
-_MAX_RECORDS = 15
+_MAX_RECORDS = 3
 
 
 def _safe_parse_json(raw: str) -> dict:
-    """带修复的 JSON 解析：先直接解析，失败则尝试修复常见 shell 转义损坏后重试。"""
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -67,7 +63,6 @@ def _safe_parse_json(raw: str) -> dict:
             return json.loads(stripped)
         except json.JSONDecodeError:
             pass
-    # 第 1.5 层：修复 LLM 将 args 列表结束符 ] 混入 JSON 对象末尾
     _candidate = raw.strip()
     if _candidate.startswith("{") and _candidate.endswith("]"):
         try:
@@ -81,7 +76,6 @@ def _safe_parse_json(raw: str) -> dict:
         pass
     try:
         from json_repair import repair_json
-
         return json.loads(repair_json(raw, return_objects=False))
     except (ImportError, Exception):
         pass
@@ -96,10 +90,8 @@ def _safe_parse_json(raw: str) -> dict:
 
 
 def _resolve_data_path(table_level: str) -> str:
-    """从 configs/data_paths.yaml 读取天表/分钟表路径。找不到配置文件时回退到 'mock'。"""
     try:
         import yaml
-
         config_path = Path(__file__).resolve().parents[3] / "configs" / "data_paths.yaml"
         if config_path.exists():
             with open(config_path, "r", encoding="utf-8") as f:
@@ -112,7 +104,6 @@ def _resolve_data_path(table_level: str) -> str:
 
 
 def run(payload_json: str) -> str:
-    """主入口：解析 payload → 修复三元组 → 查询 → 序列化结果。"""
     try:
         payload: dict[str, Any] = _safe_parse_json(payload_json)
     except json.JSONDecodeError as exc:
@@ -133,7 +124,6 @@ def run(payload_json: str) -> str:
     except Exception as exc:
         return _err(f"fix_query_config 失败: {type(exc).__name__}: {exc}")
 
-    # 兜底：fixer 意外清空 measures 时还原为原始值，确保 SQL 带聚合列
     if not fixed_config.get("measures"):
         fixed_config["measures"] = query_config.get("measures", [])
 
@@ -144,7 +134,6 @@ def run(payload_json: str) -> str:
 
     if not dfs:
         return _ok(
-            fixed_config=fixed_config,
             fix_warnings=fix_warnings,
             shape=[0, 0],
             columns=[],
@@ -163,7 +152,6 @@ def run(payload_json: str) -> str:
         summary = f"summarize 失败: {exc}"
 
     return _ok(
-        fixed_config=fixed_config,
         fix_warnings=fix_warnings,
         shape=list(df.shape),
         columns=list(df.columns),
@@ -178,9 +166,8 @@ def _ok(**kwargs: Any) -> str:
         "skill": "insight_query",
         "op": "run_query",
     }
-    # 重命名内部 key → 对外 key，保持输出稳定
-    if "fixed_config" in kwargs:
-        result["fixed_query_config"] = kwargs.pop("fixed_config")
+    # fixed_query_config 已移除：LLM 刚发出的三元组被原样 echo 回来无意义
+    kwargs.pop("fixed_config", None)
     if "shape" in kwargs:
         result["data_shape"] = kwargs.pop("shape")
     result.update(kwargs)
@@ -200,11 +187,9 @@ def _err(msg: str) -> str:
 
 
 def _json_default(obj: Any) -> Any:
-    """安全兜底：处理 pandas / numpy / datetime 等 json 默认不支持的类型。"""
-
     if hasattr(obj, "isoformat"):
         return obj.isoformat()
-    if hasattr(obj, "item"):  # numpy scalar
+    if hasattr(obj, "item"):
         try:
             return obj.item()
         except Exception:
