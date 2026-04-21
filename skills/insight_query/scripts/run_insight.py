@@ -351,8 +351,6 @@ def run(payload_json: str) -> str:
         "fix_warnings": fix_warnings,
         "found_entities": found_entities,
         "data_shape": list(df.shape),
-        "value_columns_used": value_columns,
-        "group_column_used": group_column,
         "phase_id": payload.get("phase_id"),
         "step_id": payload.get("step_id"),
         "phase_name": payload.get("phase_name"),
