@@ -144,6 +144,10 @@ class Message(BaseModel):
     steps: List[Step] = []
     renderBlocks: List[RenderBlock] = []
     createdAt: str
+    inputTokens: Optional[int] = None
+    outputTokens: Optional[int] = None
+    totalTokens: Optional[int] = None
+    reasoningTokens: Optional[int] = None
 
 
 class MessageListData(BaseModel):

@@ -149,8 +149,27 @@ class Tracer:
     def request(self, user_input: str) -> None:
         self.trace("request", {"input": user_input})
 
-    def response(self, content: str) -> None:
-        self.trace("response", {"content": content}, agent="orchestrator", is_leader=True)
+    def response(
+        self,
+        content: str,
+        *,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        total_tokens: int = 0,
+        reasoning_tokens: int = 0,
+    ) -> None:
+        self.trace(
+            "response",
+            {
+                "content": content,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+                "reasoning_tokens": reasoning_tokens,
+            },
+            agent="orchestrator",
+            is_leader=True,
+        )
 
     # ─── LLM 调用 (由 inject_prompt_tracer 触发) ─────────────────────
 

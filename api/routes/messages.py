@@ -143,6 +143,10 @@ async def send_message(conv_id: str, body: SendMessageRequest):
                     steps=steps_data,
                     render_blocks=agg.render_blocks,
                     status=agg.status,
+                    input_tokens=agg.input_tokens,
+                    output_tokens=agg.output_tokens,
+                    total_tokens=agg.total_tokens,
+                    reasoning_tokens=agg.reasoning_tokens,
                 )
                 _api_log.bind(conv_id=conv_id, msg_id=agg.message_id).info(
                     f"assistant 消息已落库 content_len={len(agg.content)} "

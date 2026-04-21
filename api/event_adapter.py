@@ -72,6 +72,10 @@ class MessageAggregate:
     render_blocks: list = field(default_factory=list)
     status: str = "streaming"
     error_message: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    reasoning_tokens: int = 0
 
 
 # ─── 事件判断工具 ─────────────────────────────────────────────────────────────
@@ -665,9 +669,22 @@ async def _adapt_body(
             if etype == "RunCompleted" and leader:
                 if reasoning_buffer:
                     _flush_reasoning()
+                # 提取累计 token 用量（RunMetrics 是所有 LLM 调用的累加）
+                metrics = getattr(event, "metrics", None)
+                if metrics is not None:
+                    agg.input_tokens = getattr(metrics, "input_tokens", 0) or 0
+                    agg.output_tokens = getattr(metrics, "output_tokens", 0) or 0
+                    agg.total_tokens = getattr(metrics, "total_tokens", 0) or 0
+                    agg.reasoning_tokens = getattr(metrics, "reasoning_tokens", 0) or 0
                 # leader 终结 → trace.response + sessions.db.messages 落 assistant
                 if tracer is not None and agg.content:
-                    tracer.response(agg.content)
+                    tracer.response(
+                        agg.content,
+                        input_tokens=agg.input_tokens,
+                        output_tokens=agg.output_tokens,
+                        total_tokens=agg.total_tokens,
+                        reasoning_tokens=agg.reasoning_tokens,
+                    )
                 if _db is not None and db_session_id is not None and agg.content:
                     _db.insert_message(db_session_id, "assistant", agg.content)
 
@@ -677,6 +694,10 @@ async def _adapt_body(
                 yield format_sse("done", {
                     "messageId": agg.message_id,
                     "thinkingDurationSec": agg.thinking_duration_sec,
+                    "inputTokens": agg.input_tokens,
+                    "outputTokens": agg.output_tokens,
+                    "totalTokens": agg.total_tokens,
+                    "reasoningTokens": agg.reasoning_tokens,
                 }), agg
                 return
 
@@ -748,6 +769,10 @@ async def _adapt_body(
         yield format_sse("done", {
             "messageId": agg.message_id,
             "thinkingDurationSec": agg.thinking_duration_sec,
+            "inputTokens": agg.input_tokens,
+            "outputTokens": agg.output_tokens,
+            "totalTokens": agg.total_tokens,
+            "reasoningTokens": agg.reasoning_tokens,
         }), agg
 
 
