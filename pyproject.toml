@@ -41,6 +41,7 @@ dependencies = [
     "fae-demo",
     "requests>=2.33.1",
     "cei-query",
+    "json-repair>=0.59.4",
 ]
 
 [dependency-groups]
