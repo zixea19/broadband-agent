@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT,
     created_at TEXT NOT NULL,
     parent_msg_id INTEGER,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    reasoning_tokens INTEGER DEFAULT 0,
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 
@@ -89,6 +93,18 @@ class Database:
             for col_sql in (
                 "ALTER TABLE traces ADD COLUMN session_hash TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE traces ADD COLUMN agent_name TEXT NOT NULL DEFAULT ''",
+            ):
+                try:
+                    conn.execute(col_sql)
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    pass  # 列已存在，忽略
+            # 兼容旧 schema：messages 表可能缺少 token 列
+            for col_sql in (
+                "ALTER TABLE messages ADD COLUMN input_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE messages ADD COLUMN output_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE messages ADD COLUMN total_tokens INTEGER DEFAULT 0",
+                "ALTER TABLE messages ADD COLUMN reasoning_tokens INTEGER DEFAULT 0",
             ):
                 try:
                     conn.execute(col_sql)
@@ -184,13 +200,23 @@ class Database:
 
     # ---- messages ----
     def insert_message(
-        self, session_id: int, role: str, content: str, parent_msg_id: Optional[int] = None
+        self,
+        session_id: int,
+        role: str,
+        content: str,
+        parent_msg_id: Optional[int] = None,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        total_tokens: int = 0,
+        reasoning_tokens: int = 0,
     ) -> Optional[int]:
         conn = self._get_conn()
         try:
             cur = conn.execute(
-                "INSERT INTO messages (session_id, role, content, created_at, parent_msg_id) VALUES (?, ?, ?, ?, ?)",
-                (session_id, role, content, _now_iso(), parent_msg_id),
+                "INSERT INTO messages (session_id, role, content, created_at, parent_msg_id, "
+                "input_tokens, output_tokens, total_tokens, reasoning_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id, role, content, _now_iso(), parent_msg_id,
+                 input_tokens, output_tokens, total_tokens, reasoning_tokens),
             )
             conn.commit()
             mid = cur.lastrowid

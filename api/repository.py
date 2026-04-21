@@ -65,6 +65,10 @@ async def init_db() -> None:
                 render_blocks         TEXT DEFAULT '[]',
                 created_at            TEXT NOT NULL,
                 status                TEXT DEFAULT 'done',
+                input_tokens          INTEGER DEFAULT 0,
+                output_tokens         INTEGER DEFAULT 0,
+                total_tokens          INTEGER DEFAULT 0,
+                reasoning_tokens      INTEGER DEFAULT 0,
                 FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
             );
 
@@ -76,6 +80,18 @@ async def init_db() -> None:
             );
         """)
         await conn.commit()
+        # 兼容旧 schema：messages 表可能缺少 token 列
+        for col_sql in (
+            "ALTER TABLE messages ADD COLUMN input_tokens INTEGER DEFAULT 0",
+            "ALTER TABLE messages ADD COLUMN output_tokens INTEGER DEFAULT 0",
+            "ALTER TABLE messages ADD COLUMN total_tokens INTEGER DEFAULT 0",
+            "ALTER TABLE messages ADD COLUMN reasoning_tokens INTEGER DEFAULT 0",
+        ):
+            try:
+                await conn.execute(col_sql)
+                await conn.commit()
+            except Exception:
+                pass  # 列已存在，忽略
     logger.info(f"API DB 初始化完成: {_DB_PATH}")
 
 
@@ -199,6 +215,10 @@ async def insert_assistant_message(
     steps: list = None,
     render_blocks: list = None,
     status: str = "done",
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    total_tokens: int = 0,
+    reasoning_tokens: int = 0,
 ) -> Message:
     now = _now_iso()
     msg_id = str(uuid.uuid4())
@@ -209,10 +229,12 @@ async def insert_assistant_message(
     async with _get_conn() as conn:
         await conn.execute(
             "INSERT INTO messages (id, conversation_id, role, content, thinking_content, "
-            "thinking_duration_sec, steps, render_blocks, created_at, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "thinking_duration_sec, steps, render_blocks, created_at, status, "
+            "input_tokens, output_tokens, total_tokens, reasoning_tokens) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (msg_id, conv_id, "assistant", content, thinking_content,
-             thinking_duration_sec, steps_json, render_json, now, status),
+             thinking_duration_sec, steps_json, render_json, now, status,
+             input_tokens, output_tokens, total_tokens, reasoning_tokens),
         )
         await _update_conversation_meta(conn, conv_id, preview)
         await conn.commit()
@@ -227,6 +249,10 @@ async def insert_assistant_message(
         steps=[],
         renderBlocks=[],
         createdAt=now,
+        inputTokens=input_tokens or None,
+        outputTokens=output_tokens or None,
+        totalTokens=total_tokens or None,
+        reasoningTokens=reasoning_tokens or None,
     )
 
 
@@ -291,6 +317,10 @@ def _row_to_message(row: aiosqlite.Row) -> Message:
         steps=steps,
         renderBlocks=render_blocks,
         createdAt=row["created_at"],
+        inputTokens=row["input_tokens"] or None,
+        outputTokens=row["output_tokens"] or None,
+        totalTokens=row["total_tokens"] or None,
+        reasoningTokens=row["reasoning_tokens"] or None,
     )
 
 
