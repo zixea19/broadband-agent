@@ -16,7 +16,7 @@
         "fix_warnings": [...],
         "data_shape": [row, col],
         "columns": [...],
-        "records": [...最多 15 条...],
+        "records": [...最多 3 条...],
         "summary": "文字摘要"
     }
 
@@ -48,7 +48,7 @@ except ImportError as exc:
     )
     sys.exit(1)
 
-_MAX_RECORDS = 15
+_MAX_RECORDS = 3
 
 
 def _safe_parse_json(raw: str) -> dict:
