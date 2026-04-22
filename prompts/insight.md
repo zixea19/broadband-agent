@@ -481,6 +481,8 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
 
 **执行时序**：`phase_start`（文本）→ 调脚本（工具调用）→ `step_result`（文本）→ ... → `reflect`（文本，**每个 Phase 必须，最后一个 Phase next_phase 填 null**）→ 下一个 Phase 的 `phase_start`（文本）→ ...
 
+🔴 **禁止在未输出 `<!--event:phase_start-->` 文本之前调用任何脚本**。若发现自己跳过了 `phase_start` 直接调脚本，当次脚本结果作废，必须先在 assistant 文本中补输出 `phase_start` 事件，再重新调用脚本。
+
 ### 每步的调用模式
 
 **纯查询步骤**（极少用，一般跳过直接 run_insight）：

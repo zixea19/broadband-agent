@@ -71,6 +71,7 @@ class MessageAggregate:
     thinking_duration_sec: int = 0
     steps: list[StepAggregate] = field(default_factory=list)
     render_blocks: list = field(default_factory=list)
+    seen_insight_steps: set = field(default_factory=set)
     status: str = "streaming"
     error_message: str = ""
     input_tokens: int = 0
@@ -576,10 +577,22 @@ async def _adapt_body(
                     # 前端自主选择消费其中一条通道（消费两条会重复渲染）。
                     # 持久化只写一份到 render_blocks，避免历史回放出现两倍内容。
                     if step_for_evt is not None and step_for_evt.step_id == "insight":
-                        for rb in _emit_insight_render(skill_name, result_raw, sub_step_id):
-                            agg.render_blocks.append(rb)              # 持久化一次
-                            yield format_sse("report", rb), agg       # 主通道
-                            yield format_sse("render", rb), agg       # debug 冗余
+                        _skip_insight = False
+                        _parsed_for_dedup = _parse_stdout(result_raw)
+                        if isinstance(_parsed_for_dedup, dict):
+                            _pid = _parsed_for_dedup.get("phase_id")
+                            _sid = _parsed_for_dedup.get("step_id")
+                            if _pid is not None and _sid is not None:
+                                _dedup_key = (_pid, _sid)
+                                if _dedup_key in agg.seen_insight_steps:
+                                    _skip_insight = True
+                                else:
+                                    agg.seen_insight_steps.add(_dedup_key)
+                        if not _skip_insight:
+                            for rb in _emit_insight_render(skill_name, result_raw, sub_step_id):
+                                agg.render_blocks.append(rb)              # 持久化一次
+                                yield format_sse("report", rb), agg       # 主通道
+                                yield format_sse("render", rb), agg       # debug 冗余
 
                 else:
                     # ── 加载类（get_skill_instructions / get_skill_reference）────
