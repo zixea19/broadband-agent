@@ -326,6 +326,7 @@ class OutstandingMinStrategy(InsightStrategy):
                     "name": col,
                     "type": "bar",
                     "data": data_points,
+                    "itemStyle": {"color": base_color},
                     "barMaxWidth": 30,
                 }
             )
