@@ -55,49 +55,11 @@ payload 字段：`phase_id`、`phase_name`、`table_level`、`steps[]`（含 `st
 }
 ```
 
-返回的 `results[]` 与单步 `run_insight.py` 格式一致，按 `step_id` 顺序排列。
+返回的 `results[]` 按 `step_id` 顺序排列，每项格式与单步结果一致。
 
 > NL2Code 类型的 step 仍走 `run_nl2code.py`，不放进 `run_phase.py`。
 > 如果某 Phase 混有 NL2Code step，先调 `run_phase.py` 处理标准 step，再单独调 `run_nl2code.py`。
 
-### 洞察函数执行（单步路径，兜底 / 重试用）
-```
-get_skill_script(
-    "insight_query",
-    "run_insight.py",
-    execute=True,
-    args=["<payload_json_string>"]
-)
-```
-payload：
-```json
-{
-  "insight_type": "OutstandingMin",
-  "query_config": {
-    "dimensions": [[]],
-    "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-    "measures": [{"name": "CEI_score", "aggr": "AVG"}]
-  },
-  "table_level": "day",
-  "phase_id": 1,
-  "step_id": 1,
-  "phase_name": "定位低分PON口",
-  "step_name": "找出 CEI_score 最低的 PON 口"
-}
-```
-
-**带 IN 过滤的下钻调用**：
-```json
-{
-  "insight_type": "OutstandingMin",
-  "query_config": {
-    "dimensions": [[{"dimension": {"name": "portUuid", "type": "DISCRETE"}, "conditions": [{"oper": "IN", "values": ["uuid-a", "uuid-b"]}]}]],
-    "breakdown": {"name": "portUuid", "type": "UNORDERED"},
-    "measures": [{"name": "ODN_score", "aggr": "AVG"}, {"name": "Wifi_score", "aggr": "AVG"}]
-  },
-  "table_level": "day"
-}
-```
 
 ### 返回格式
 ```json
@@ -142,7 +104,7 @@ get_skill_script("insight_query", "run_query.py", execute=True, args=["<payload_
 
 ## Scripts
 - `scripts/run_phase.py` — Phase 内所有标准 Step 批量执行（单次工具调用替代 N 次）
-- `scripts/run_insight.py` — 三元组查询 + 12 种洞察函数（返回 chart_configs）
+- `scripts/run_insight.py` — 内部依赖，由 run_phase.py 直接调用，LLM 不直接使用
 - `scripts/run_query.py` — 纯三元组查询（返回 records + summary）
 
 ## References
