@@ -524,6 +524,7 @@ payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step
 - `"phase_id"`：当前 Phase 编号（来自 MacroPlan）
 - `"step_id"`：当前 Step 编号
 - `"phase_name"`：当前 Phase 名称（来自 MacroPlan `phases[i].name`，如 `"定位低分PON口"`）
+- `"step_name"`：当前 Step 目的（来自 Step 数组的 `rationale`，如 `"找出 CEI_score 最低的 PON 口"`）
 
 **NL2Code 步骤**（当现有 12 种函数无法满足时）：
 1. **你自己**按 `references/nl2code_spec.md` 写一段 pandas 代码（不要再委托给其他 LLM）
