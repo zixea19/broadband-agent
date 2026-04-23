@@ -66,7 +66,7 @@ payload 字段：`phase_id`、`phase_name`、`table_level`、`steps[]`（含 `st
 {
   "status": "ok",
   "skill": "insight_query",
-  "op": "run_insight",
+  "op": "run_phase",
   "insight_type": "OutstandingMin",
   "significance": 0.73,
   "description": {"min_group": "uuid-a", "summary": "..."},
