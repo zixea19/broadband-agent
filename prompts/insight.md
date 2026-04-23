@@ -434,7 +434,8 @@ Report (1 次)
 
 ---
 
-## 5. 阶段 3 — Execute
+## 5. 阶段 3 — Execute（批量模式）
+
 
 ### 调用前必读
 
@@ -479,7 +480,7 @@ get_skill_script("insight_query", "run_insight.py", execute=True, args=[
    > ⚠️ 脚本 stdout 被框架自动展示（图表渲染用），**不等于** `step_result` 事件。即使 stdout 已展示，`step_result` 仍必须单独在 assistant 文本中输出；缺失会导致前端进度条跟踪失败。
 3. **`reflect`** — 每个 Phase 所有 Step 执行完后输出（最后一个 Phase 无后续 Phase 时可跳过）
 
-**执行时序**：`phase_start`（文本）→ 调脚本（工具调用）→ `step_result`（文本）→ ... → `reflect`（文本，**每个 Phase 必须，最后一个 Phase next_phase 填 null**）→ 下一个 Phase 的 `phase_start`（文本）→ ...
+**执行时序**：`phase_start`（文本，工具调用**之前**输出）→ 调 `run_phase.py`（**单次**工具调用，传入 Phase 全部标准 Step）→ 从 `results[]` 逐步读取，在**同一次回复内**连续输出 `step_result` × N（文本）→ `reflect`（文本，**每个 Phase 必须，最后一个 Phase next_phase 填 null**）→ 下一个 Phase 的 `phase_start`（文本）→ ...
 
 ### 每步的调用模式
 
@@ -493,7 +494,22 @@ get_skill_script(
 )
 ```
 
-**洞察函数步骤**（大多数情况）：
+**Phase 批量执行步骤**（Execute 阶段主路径）：
+```
+get_skill_script(
+    "insight_query",
+    "run_phase.py",
+    execute=True,
+    args=["<phase_payload_json_string>"]
+)
+```
+
+payload 包含 `phase_id`、`phase_name`、`table_level`、`steps[]`；`steps[]` 中每个 step 含 `step_id`、`step_name`、`insight_type`、`query_config`。工具返回后从 `results[]` 逐项读取，在**同一次回复内**对每个 result 连续输出 `step_result` 事件；`phase_id`、`step_id`、`found_entities` 等字段来自 `results[i]` 原样透传。
+
+🔴 **NL2Code step 不放入 `run_phase.py`**：如果某 Phase 含有 NL2Code step，先调 `run_phase.py` 处理所有标准 step，再单独调 `run_nl2code.py`。
+
+**单步兜底路径**（仅用于重试失败的单个 step）：
+
 ```
 get_skill_script(
     "insight_query",
@@ -502,13 +518,12 @@ get_skill_script(
     args=["<payload_json_string>"]
 )
 ```
-payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step 的 `insight_types[0]`。
-`value_columns` / `group_column` 可省略（会从三元组推导）。
+
+payload 的 `query_config` 就是 Step 里的三元组，`insight_type` 是 Step 的 `insight_types[0]`。`value_columns` / `group_column` 可省略（会从三元组推导）。
 🔴 **必须**在 payload 中携带以下 4 个字段，脚本会原样透传到 stdout JSON，供前端关联 step_result 事件：
 - `"phase_id"`：当前 Phase 编号（来自 MacroPlan）
 - `"step_id"`：当前 Step 编号
 - `"phase_name"`：当前 Phase 名称（来自 MacroPlan `phases[i].name`，如 `"定位低分PON口"`）
-- `"step_name"`：当前 Step 目的（来自 Step 数组的 `rationale`，如 `"找出 CEI_score 最低的 PON 口"`）
 
 **NL2Code 步骤**（当现有 12 种函数无法满足时）：
 1. **你自己**按 `references/nl2code_spec.md` 写一段 pandas 代码（不要再委托给其他 LLM）
