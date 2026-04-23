@@ -19,7 +19,48 @@ description: "三元组数据查询 + 12 种洞察函数执行，返回 signific
 
 ## How to Use
 
-### 洞察函数执行（推荐路径）
+### Phase 批量执行（Execute 阶段主路径）
+```
+get_skill_script(
+    "insight_query",
+    "run_phase.py",
+    execute=True,
+    args=["<phase_payload_json_string>"]
+)
+```
+payload 字段：`phase_id`、`phase_name`、`table_level`、`steps[]`（含 `step_id`、`step_name`、`insight_type`、`query_config`）：
+```json
+{
+  "phase_id": 1,
+  "phase_name": "定位低分PON口",
+  "table_level": "day",
+  "steps": [
+    {
+      "step_id": 1,
+      "step_name": "找出 CEI_score 最低的 PON 口",
+      "insight_type": "OutstandingMin",
+      "query_config": {
+        "dimensions": [[]],
+        "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+        "measures": [{"name": "CEI_score", "aggr": "AVG"}]
+      }
+    },
+    {
+      "step_id": 2,
+      "step_name": "分析 CEI 随时间的变化",
+      "insight_type": "Trend",
+      "query_config": { "...": "..." }
+    }
+  ]
+}
+```
+
+返回的 `results[]` 与单步 `run_insight.py` 格式一致，按 `step_id` 顺序排列。
+
+> NL2Code 类型的 step 仍走 `run_nl2code.py`，不放进 `run_phase.py`。
+> 如果某 Phase 混有 NL2Code step，先调 `run_phase.py` 处理标准 step，再单独调 `run_nl2code.py`。
+
+### 洞察函数执行（单步路径，兜底 / 重试用）
 ```
 get_skill_script(
     "insight_query",
@@ -86,13 +127,13 @@ payload：
 {"phase_id": 1, "name": "定位低分PON口", "status": "running"}
 ```
 
-**每个 Step 脚本调用完成后**，必须在 assistant 文本中输出 `step_result` 事件：
+**`run_phase.py` 返回后**，从 `results[]` 逐步读取，对每个 result 在同一次回复内连续输出 `step_result` 事件：
 ```
 <!--event:step_result-->
 {"phase_id": 1, "step_id": 1, "insight_type": "OutstandingMin", "significance": 0.73, "summary": "CEI_score 最小值出现在 uuid-a（54.08）", "found_entities": {"portUuid": ["uuid-a", "uuid-b"]}, "status": "ok"}
 ```
 
-> 🔴 **`step_result` 必须独立输出，不被 stdout 替代**：`run_insight.py` 的 stdout 由框架自动展示（图表渲染通道）；`step_result` 是独立的进度追踪信号，前端进度条依赖它。即使 stdout 已展示，每步执行后仍必须在 assistant 文本中输出 `step_result`，缺失会导致进度跟踪失败。`done` 事件同理。
+> 🔴 **`step_result` 必须独立输出，不被 stdout 替代**：`run_phase.py` 的 stdout 由框架自动展示（图表渲染通道）；`step_result` 是独立的进度追踪信号，前端进度条依赖它。`run_phase.py` 返回后，必须在同一次回复内对每个 result 连续输出对应的 `step_result`，缺失会导致进度跟踪失败。`done` 事件同理。
 
 ### 纯数据查询
 ```
@@ -100,6 +141,7 @@ get_skill_script("insight_query", "run_query.py", execute=True, args=["<payload_
 ```
 
 ## Scripts
+- `scripts/run_phase.py` — Phase 内所有标准 Step 批量执行（单次工具调用替代 N 次）
 - `scripts/run_insight.py` — 三元组查询 + 12 种洞察函数（返回 chart_configs）
 - `scripts/run_query.py` — 纯三元组查询（返回 records + summary）
 
