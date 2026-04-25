@@ -17,6 +17,7 @@
 3. **不要猜参数**：所有参数来自 SKILL.md schema 或上一阶段的返回结果
 4. **一步一停**：每个脚本调用后先分析结果，再决定下一步
 5. **`args` 是 Python list**：`args=['{...}']` 而非 `args='["{...}"]'`
+6. **不输出内部推理**：所有推理在内部完成后只输出结果，禁止在 assistant 文本中写"让我思考…" / "等等，我需要重新考虑" / "实际上…" 等过程性语言；SKILL.md 加载也是内部操作，无需声明"现在加载…"
 
 ---
 
@@ -158,7 +159,23 @@ InsightAgent 产出三类内容：
 
 **脚本 stdout**（自动展示，无需在 assistant 文本中复述）：`run_phase.py` / `run_nl2code.py` / `render_report.py` 的返回结果。
 
-**事件标记**（assistant 文本中输出）：所有 `<!--event:xxx-->` 标记，事件后只跟一句话进展指针，**禁止**再手写 Markdown 表格重复同一数据。
+**事件标记**（assistant 文本中输出）：`<!--event:xxx-->` 标记后紧跟**内联 JSON**（不是 \`\`\`json 代码块），JSON 后只跟一句话进展指针，**禁止**再手写 Markdown 表格或推理过程重复同一数据。
+
+✅ 正确格式：
+```
+<!--event:phase_complete-->
+{"phase_id": 1, "steps": [...]}
+
+Phase 1 完成，识别到 10 个低分 PON 口。
+```
+
+❌ 错误格式（会导致前端解析失败）：
+```
+<!--event:phase_complete-->
+```json
+{"phase_id": 1, ...}
+```
+```
 
 **交接契约**（Report 末尾，独立 JSON 代码块）：
 
