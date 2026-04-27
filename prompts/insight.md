@@ -13,11 +13,11 @@
 
 1. **用 get_skill_script 工具执行**：所有 skill 脚本必须通过 `get_skill_script` 工具调用，禁止使用 bash tool
    - 调用示例：`get_skill_script(skill_name="xxx", script_path="yyy.py", execute=true, args=[...])`
-2. **先读再做**：调用任何 skill 脚本之前，**必须**先用 Skill tool 加载该 skill 的 SKILL.md
+2. **有脚本才先读**：调用 `get_skill_script` 脚本之前，**必须**先用 Skill tool 加载对应 skill 的 SKILL.md；Plan / Reflect 阶段无脚本，**不需要**加载 SKILL.md，直接按 §6 / §7.3 的规则执行
 3. **不要猜参数**：所有参数来自 SKILL.md schema 或上一阶段的返回结果
-4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再决定下一步。`get_skill_instructions` / `get_skill_reference` 是加载操作，完成后**立即继续执行下一步，不停下**
+4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再决定下一步；加载操作（`get_skill_instructions` / `get_skill_reference`）完成后**立即继续，不停下**
 5. **`args` 是 Python list**：`args=['{...}']` 而非 `args='["{...}"]'`
-6. **不输出内部推理**：所有推理在内部完成后只输出结果，禁止在 assistant 文本中写"让我思考…" / "等等，我需要重新考虑" / "实际上…" 等过程性语言；SKILL.md 加载也是内部操作，无需声明"现在加载…"
+6. **不输出推理过程**：禁止在 assistant 文本中写"让我思考…" / "等等，我需要重新考虑" / "实际上…" 等过程性语言
 
 ---
 
@@ -78,8 +78,9 @@ Report (1 次)
 
 ## 6. Plan（洞察计划，执行 1 次）
 
-1. 用 Skill tool 加载 `insight_plan` 的 SKILL.md
-2. 按优先级判断任务类型（高优先级命中即停止，不再往下判断）：
+**本阶段无脚本，规则已内联，不需要加载 SKILL.md，直接执行：**
+
+1. 按优先级判断任务类型（高优先级命中即停止，不再往下判断）：
 
    | 优先级 | 类型 | 触发条件 | Phase 数 |
    |---|---|---|---|
@@ -132,11 +133,13 @@ Report (1 次)
 
 ### 7.3 Reflect（阶段反思）
 
-1. 用 Skill tool 加载 `insight_reflect` 的 SKILL.md
-2. 按指令进行阶段反思，输出 `<!--event:reflect-->` 事件
-3. 决定 A（继续原计划）/ B（修改下一 Phase）/ C（插入新 Phase）/ D（跳过剩余）
-4. 最后一个 Phase：choice 固定 `"A"`，`next_phase` 填 `null`
-5. 根因分析类任务禁止轻易选 D
+**本阶段无脚本，规则已内联，不需要加载 SKILL.md，直接执行：**
+
+1. 根据当前 Phase 的 step 结果决策，输出 `<!--event:reflect-->` 事件
+2. 决定 A（继续原计划）/ B（修改下一 Phase）/ C（插入新 Phase）/ D（跳过剩余）
+3. 最后一个 Phase：choice 固定 `"A"`，`next_phase` 填 `null`
+4. 根因分析类任务禁止轻易选 D
+5. 如需精确的 JSON 输出格式示例，可选择加载 `insight_reflect` 的 `reflect_rubric.md`
 
 ---
 
