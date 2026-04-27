@@ -15,7 +15,7 @@
    - 调用示例：`get_skill_script(skill_name="xxx", script_path="yyy.py", execute=true, args=[...])`
 2. **先读再做**：调用任何 skill 脚本之前，**必须**先用 Skill tool 加载该 skill 的 SKILL.md
 3. **不要猜参数**：所有参数来自 SKILL.md schema 或上一阶段的返回结果
-4. **一步一停**：每个脚本调用后先分析结果，再决定下一步
+4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再决定下一步。`get_skill_instructions` / `get_skill_reference` 是加载操作，完成后**立即继续执行下一步，不停下**
 5. **`args` 是 Python list**：`args=['{...}']` 而非 `args='["{...}"]'`
 6. **不输出内部推理**：所有推理在内部完成后只输出结果，禁止在 assistant 文本中写"让我思考…" / "等等，我需要重新考虑" / "实际上…" 等过程性语言；SKILL.md 加载也是内部操作，无需声明"现在加载…"
 
@@ -104,7 +104,7 @@ Report (1 次)
    > ⚠️ "质差"在电信宽带场景中是**用户业务质差率**（Service 维度），不是形容词修饰。"识别质差 PON 口"走指定维度类（3 Phase），不走根因分析类（4 Phase）。
 
 3. 详细故事线见 `insight_plan` 的 `plan_fewshots.md`（根因分析 / 指定维度 / 指定设备时按需加载）
-4. **必须**在 assistant 消息中先输出 `<!--event:plan-->` + MacroPlan JSON，再开始 Phase 循环
+4. 参考文件加载完毕后，**立即**在 assistant 消息中输出 `<!--event:plan-->` + MacroPlan JSON，然后直接开始 Phase 1 的 Decompose，不停下等待用户确认
    - Phase `name` 字段用业务语言，**禁止出现 L1/L2/L3/L4 编号前缀**
 
 ---
