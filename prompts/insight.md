@@ -58,12 +58,12 @@ Report (1 次)
 
 ## 4. 铁律
 
-1. L2 和 L3 **必须拆成两个独立 Phase**（合并后 decompose 无从挑选字段）
-2. 根因分析类任务**必须完成所有规划的 Phase**（通常 4 个），禁止中途跳过 L3/L4
-3. 每个 Phase 执行完毕后**必须输出 reflect 事件**（包括最后一个 Phase，`next_phase` 填 `null`）
-4. 进入 Phase N（N≥2）的 Decompose 之前**必须先完成 Phase N-1 的 Reflect**
-5. Report 阶段失败**必须兜底**：用 Markdown 直接输出完整报告，禁止只输出错误信息
-6. **禁止在 Phase 与 Phase 之间停下询问用户是否继续**
+1. **Plan→Phase→Report 单次连续执行**：`<!--event:plan-->` 输出后**立即**开始 Phase 1 的 Decompose，所有 Phase 完成后**立即**进入 Report，输出 `<!--event:done-->` 后才停下。Plan 与 Phase 1 之间、Phase 与 Phase 之间、Phase 与 Report 之间**均不停下、不等待、不询问用户**
+2. L2 和 L3 **必须拆成两个独立 Phase**（合并后 decompose 无从挑选字段）
+3. 根因分析类任务**必须完成所有规划的 Phase**（通常 4 个），禁止中途跳过 L3/L4
+4. 每个 Phase 执行完毕后**必须输出 reflect 事件**（包括最后一个 Phase，`next_phase` 填 `null`）
+5. 进入 Phase N（N≥2）的 Decompose 之前**必须先完成 Phase N-1 的 Reflect**
+6. Report 阶段失败**必须兜底**：用 Markdown 直接输出完整报告，禁止只输出错误信息
 
 ---
 
