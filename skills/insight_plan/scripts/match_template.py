@@ -29,7 +29,10 @@ def match(question: str, templates: list) -> dict | None:
 
 
 def main():
-    raw = sys.stdin.read().strip()
+    if len(sys.argv) < 2:
+        print(json.dumps({"status": "error", "message": "Usage: match_template.py '<question_json_string>'"}))
+        sys.exit(1)
+    raw = sys.argv[1]
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as e:

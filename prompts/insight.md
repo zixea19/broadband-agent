@@ -48,7 +48,7 @@ Report (1 次)
 
 | 阶段 | 动作 | 产物 | 调用 Skill |
 |---|---|---|---|
-| Plan | 把用户目标拆成 1-4 个 Phase | MacroPlan JSON（**必须在 assistant 消息中输出**） | 按需读 `insight_plan` 的 `plan_fewshots.md` |
+| Plan | 把用户目标拆成 1-4 个 Phase | MacroPlan JSON（**必须在 assistant 消息中输出**） | `insight_plan`（先调 `match_template.py`，未命中再读 `plan_fewshots.md`） |
 | Decompose (每 Phase) | 为当前 Phase 拆 1-8 个 Step | Step 分解摘要 | `insight_decompose`（`list_schema.py` 查字段 + 参考文件） |
 | Execute (每 Phase) | 批量执行 Step | StepResult 列表 | `insight_query`（`run_phase.py`）或 `insight_nl2code`（`run_nl2code.py`） |
 | Reflect (每 Phase) | Phase 结束后决定 A/B/C/D | 反思决策 | 按需读 `insight_reflect` 的 `reflect_rubric.md` |
@@ -78,7 +78,14 @@ Report (1 次)
 
 ## 6. Plan（洞察计划，执行 1 次）
 
-**本阶段无脚本，规则已内联，不需要加载 SKILL.md，直接执行：**
+**快速通道（优先执行，命中时完全跳过以下正常流程）：**
+
+1. 用 Skill tool 加载 `insight_plan` 的 SKILL.md
+2. 调用 `match_template.py`：`get_skill_script("insight_plan", "match_template.py", execute=True, args=['{"question": "<用户原始消息>"}'])`
+3. **命中（`status="hit"`）** → 用 `template.macroPlan` 补上 `goal` 字段（用户意图一句话摘要）后输出 `<!--event:plan-->` 事件；在上下文中记住完整 `template` 对象（Decompose 阶段使用）；**直接开始 Phase 1 Decompose，跳过以下所有步骤**
+4. **未命中（`status="miss"`）** → 继续以下正常流程
+
+**正常流程（仅模板未命中时执行）：**
 
 1. 按优先级判断任务类型（高优先级命中即停止，不再往下判断）：
 
@@ -104,8 +111,8 @@ Report (1 次)
 
    > ⚠️ "质差"在电信宽带场景中是**用户业务质差率**（Service 维度），不是形容词修饰。"识别质差 PON 口"走指定维度类（3 Phase），不走根因分析类（4 Phase）。
 
-3. 详细故事线见 `insight_plan` 的 `plan_fewshots.md`（根因分析 / 指定维度 / 指定设备时按需加载）
-4. 参考文件加载完毕后，**立即**在 assistant 消息中输出 `<!--event:plan-->` + MacroPlan JSON，然后直接开始 Phase 1 的 Decompose，不停下等待用户确认
+2. 详细故事线见 `insight_plan` 的 `plan_fewshots.md`（根因分析 / 指定维度 / 指定设备时按需加载）
+3. 参考文件加载完毕后，**立即**在 assistant 消息中输出 `<!--event:plan-->` + MacroPlan JSON，然后直接开始 Phase 1 的 Decompose，不停下等待用户确认
    - Phase `name` 字段用业务语言，**禁止出现 L1/L2/L3/L4 编号前缀**
 
 ---
@@ -115,6 +122,17 @@ Report (1 次)
 对 MacroPlan 中的每个 Phase 依次执行 Decompose → Execute → Reflect 三步。
 
 ### 7.1 Decompose（任务分解）
+
+**模板路径（快速通道命中且 `template.phase_templates` 中存在当前 `phase_id` 的条目时）：**
+
+1. 从 `template.phase_templates` 取 `phase_id` 匹配的项，得到 `steps` 数组
+2. 若某 step 的 `query_config.dimensions == "{{entity_filter}}"`：
+   - 从 `entity_filter.from_phase` 对应 Phase 的 `phase_complete` 事件中，取 `OutstandingMin` 或 `Attribution` 类型 step 的 `found_entities[entity_filter.field]` 值列表
+   - 将 `"{{entity_filter}}"` 替换为标准三元组：`[[{"dimension": {"name": "<entity_filter.field>", "type": "DISCRETE"}, "conditions": [{"oper": "IN", "values": [...实际值...]}]}]]`
+3. 直接输出 `<!--event:decompose_result-->` 事件（steps 原样复制，dimensions 已替换）
+4. **跳过** `insight_decompose` SKILL.md 加载和 `list_schema.py` 调用，直接进入 Execute
+
+**正常路径（模板未命中，或 `template.phase_templates` 中无当前 phase_id 条目时）：**
 
 1. 用 Skill tool 加载 `insight_decompose` 的 SKILL.md
 2. 若需查字段合法性，按 SKILL.md 说明调用 `list_schema.py`
