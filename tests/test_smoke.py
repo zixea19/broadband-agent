@@ -1366,23 +1366,18 @@ def _run_match_template(question: str) -> dict:
 
 
 def test_match_template_hit_returns_correct_task_type():
-    """ODN 关键词命中，返回 status=hit + 正确 task_type + 完整模板结构。"""
+    """ODN 关键词命中，返回 status=hit + 正确 task_type + 模板结构（仅 Phase 1）。"""
     result = _run_match_template("这个局点的光功率问题很严重，ODN评分持续偏低")
     assert result["status"] == "hit"
     assert result["task_type"] == "指定维度_ODN"
     tpl = result["template"]
     assert "macroPlan" in tpl
     assert tpl["macroPlan"]["total_phases"] == 3
-    assert len(tpl["phase_templates"]) == 3
-    # Phase 1 无 entity_filter，dimensions 是真实列表
+    # phase_templates 只存 Phase 1，Phase 2/3 由 LLM 正常 Decompose
+    assert len(tpl["phase_templates"]) == 1
     p1 = tpl["phase_templates"][0]
     assert p1["phase_id"] == 1
     assert isinstance(p1["steps"][0]["query_config"]["dimensions"], list)
-    # Phase 2 有 entity_filter 占位符且 dimensions 为模板字符串
-    p2 = tpl["phase_templates"][1]
-    assert p2["phase_id"] == 2
-    assert "entity_filter" in p2
-    assert p2["steps"][0]["query_config"]["dimensions"] == "{{entity_filter}}"
 
 
 def test_match_template_all_eight_dimensions_have_template():
@@ -1416,8 +1411,8 @@ def test_match_template_miss_on_generic_question():
         assert result["status"] == "miss", f"问题 '{question}' 不应命中但返回了 {result}"
 
 
-def test_match_template_phase2_entity_filter_placeholder_exists():
-    """8 个维度模板的 Phase 2（天表细化）中，dimensions 应含 {{entity_filter}} 占位符。"""
+def test_match_template_only_phase1_stored():
+    """所有维度模板的 phase_templates 应只含 phase_id=1，Phase 2+ 不存模板（由 LLM 正常 Decompose）。"""
     dimension_probes = {
         "指定维度_ODN": "ODN光衰高",
         "指定维度_Wifi": "wifi干扰",
@@ -1432,13 +1427,10 @@ def test_match_template_phase2_entity_filter_placeholder_exists():
         result = _run_match_template(question)
         assert result["status"] == "hit", f"{expected_type} 应命中"
         phase_templates = result["template"]["phase_templates"]
-        p2 = next((p for p in phase_templates if p["phase_id"] == 2), None)
-        assert p2 is not None, f"{expected_type} 缺少 phase_id=2 模板"
-        assert "entity_filter" in p2, f"{expected_type} Phase 2 缺少 entity_filter 字段"
-        for step in p2["steps"]:
-            assert step["query_config"]["dimensions"] == "{{entity_filter}}", (
-                f"{expected_type} Phase 2 step {step['step_id']} dimensions 不是占位符"
-            )
+        assert len(phase_templates) == 1, f"{expected_type} phase_templates 应只有 1 条（Phase 1），实际 {len(phase_templates)} 条"
+        assert phase_templates[0]["phase_id"] == 1, f"{expected_type} 唯一模板条目应为 phase_id=1"
+        # macroPlan 仍包含全部 3 个 phase 定义（用于输出 plan 事件）
+        assert len(result["template"]["macroPlan"]["phases"]) == 3, f"{expected_type} macroPlan.phases 应含 3 个"
 
 
 if __name__ == "__main__":
