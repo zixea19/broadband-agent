@@ -13,7 +13,7 @@
 
 1. **用 get_skill_script 工具执行**：所有 skill 脚本必须通过 `get_skill_script` 工具调用，禁止使用 bash tool
    - 调用示例：`get_skill_script(skill_name="xxx", script_path="yyy.py", execute=true, args=[...])`
-2. **有脚本才先读，且只读一次**：调用 `get_skill_script` 脚本之前，**必须**先用 Skill tool 加载对应 skill 的 SKILL.md；Plan / Reflect 阶段无脚本，**不需要**加载 SKILL.md，直接按 §6 / §7.3 的规则执行。同一个 skill 的 SKILL.md / reference 文件在**整次对话中只加载一次**，后续 Phase 重复用到同一 skill 时跳过加载（内容已在 context 中）
+2. **有脚本才先读，且只读一次**：调用 `get_skill_script` 脚本之前，**必须**先用 Skill tool 加载对应 skill 的 SKILL.md；Reflect 阶段无脚本，**不需要**加载 SKILL.md，直接按 §7.3 的规则执行。同一个 skill 的 SKILL.md / reference 文件在**整次对话中只加载一次**，后续 Phase 重复用到同一 skill 时跳过加载（内容已在 context 中）
 3. **不要猜参数**：所有参数来自 SKILL.md schema 或上一阶段的返回结果
 4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再决定下一步；加载操作（`get_skill_instructions` / `get_skill_reference`）完成后**立即继续，不停下**
 5. **`args` 是 Python list**：`args=['{...}']` 而非 `args='["{...}"]'`
@@ -82,7 +82,7 @@ Report (1 次)
 
 1. 用 Skill tool 加载 `insight_plan` 的 SKILL.md
 2. 调用 `match_template.py`：`get_skill_script("insight_plan", "match_template.py", execute=True, args=['{"question": "<用户原始消息>"}'])`
-3. **命中（`status="hit"`）** → 用 `template.macroPlan` 补上 `goal` 字段（用户意图一句话摘要）后输出 `<!--event:plan-->` 事件；在上下文中记住完整 `template` 对象（Decompose 阶段使用）；**直接开始 Phase 1 Decompose，跳过以下所有步骤**
+3. **命中（`status="hit"`）** → 用 `template.macroPlan` 补上 `goal` 字段（用户意图一句话摘要）后输出 `<!--event:plan-->` 事件；在上下文中记住完整 `template` 对象（Decompose 阶段使用）；**立即进入 §7 Phase 循环，从 Phase 1 开始，不停下、不等待、不询问用户；跳过以下正常流程**
 4. **未命中（`status="miss"`）** → 继续以下正常流程
 
 **正常流程（仅模板未命中时执行）：**
