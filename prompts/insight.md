@@ -15,7 +15,7 @@
    - 调用示例：`get_skill_script(skill_name="xxx", script_path="yyy.py", execute=true, args=[...])`
 2. **有脚本才先读，且只读一次**：调用 `get_skill_script` 脚本之前，**必须**先用 Skill tool 加载对应 skill 的 SKILL.md；Reflect 阶段无脚本，**不需要**加载 SKILL.md，直接按 §7.3 的规则执行。同一个 skill 的 SKILL.md / reference 文件在**整次对话中只加载一次**，后续 Phase 重复用到同一 skill 时跳过加载（内容已在 context 中）
 3. **不要猜参数**：所有参数来自 SKILL.md schema 或上一阶段的返回结果
-4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再决定下一步；加载操作（`get_skill_instructions` / `get_skill_reference`）完成后**立即继续，不停下**
+4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再**按 §4 铁律执行下一步**；加载操作（`get_skill_instructions` / `get_skill_reference`）完成后**立即继续，不停下**
 5. **`args` 是 Python list**：`args=['{...}']` 而非 `args='["{...}"]'`
 6. **不输出推理过程**：禁止在 assistant 文本中写"让我思考…" / "等等，我需要重新考虑" / "实际上…" 等过程性语言
 
@@ -64,6 +64,7 @@ Report (1 次)
 4. 每个 Phase 执行完毕后**必须输出 reflect 事件**（包括最后一个 Phase，`next_phase` 填 `null`）
 5. 进入 Phase N（N≥2）的 Decompose 之前**必须先完成 Phase N-1 的 Reflect**
 6. Report 阶段失败**必须兜底**：用 Markdown 直接输出完整报告，禁止只输出错误信息
+7. **`run_phase.py` 返回后必须连续输出，不停下**：`run_phase.py` 返回 → 立即输出 `<!--event:phase_complete-->` → 立即输出 `<!--event:reflect-->` → 若有剩余 Phase 立即开始下一 Phase 的 Decompose，若无则立即进入 §8 Report；全程不停下、不等待用户
 
 ---
 
@@ -144,7 +145,7 @@ Report (1 次)
 1. 用 Skill tool 加载 `insight_query` 的 SKILL.md
 2. 在 assistant 文本中先输出 `<!--event:phase_start-->` + `{"phase_id": N, "name": "...", "status": "running"}`
 3. 直接从 `decompose_result.steps[]` 复制构造 payload，**禁止重建或筛选**，**一次调用** `run_phase.py` 执行 Phase 内所有标准 Step
-4. `run_phase.py` 返回后，输出一条 `<!--event:phase_complete-->` 包含所有 Step 结果
+4. `run_phase.py` 返回后，**立即**输出一条 `<!--event:phase_complete-->` 包含所有 Step 结果，然后**立即进入 §7.3 Reflect，不停下、不等待用户**
 5. NL2Code step **不放入** `run_phase.py`，单独调 `run_nl2code.py`（NL2Code 代码由你自己写，重试 ≤ 1 次）
 6. 某 step 失败时，可用 `run_phase.py` 传单个 step 重试 ≤ 1 次
 
@@ -157,6 +158,7 @@ Report (1 次)
 3. 最后一个 Phase：choice 固定 `"A"`，`next_phase` 填 `null`
 4. 根因分析类任务禁止轻易选 D
 5. 如需精确的 JSON 输出格式示例，可选择加载 `insight_reflect` 的 `reflect_rubric.md`
+6. **输出 `reflect` 事件后立即继续**：若 `next_phase` 不为 `null`，立即开始下一 Phase 的 §7.1 Decompose；若 `next_phase` 为 `null`，立即进入 §8 Report，不停下、不等待用户
 
 ---
 
