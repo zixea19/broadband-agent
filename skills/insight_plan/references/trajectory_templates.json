@@ -1,0 +1,996 @@
+[
+  {
+    "task_type": "指定维度_ODN",
+    "keywords": ["光路", "ODN", "光功率", "光衰", "BIP", "FEC", "bip", "fec"],
+    "macroPlan": {
+      "goal": "定位ODN光路问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位ODN低分PON口", "table_level": "day", "focus_dimensions": ["ODN"]},
+        {"phase_id": 2, "name": "ODN细化字段根因定位", "table_level": "day", "focus_dimensions": ["ODN"]},
+        {"phase_id": 3, "name": "分钟表ODN时序验证", "table_level": "minute", "focus_dimensions": ["ODN"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别ODN评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "ODN_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "ODN各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "ODN_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "ODN细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "oltRxPowerHighCnt", "aggr": "AVG"},
+                {"name": "bipHighCnt", "aggr": "AVG"},
+                {"name": "fecHighCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "ODN细化字段最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "oltRxPowerPercent", "aggr": "AVG"},
+                {"name": "bipPercent", "aggr": "AVG"},
+                {"name": "fecPercent", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "ODN细化指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "oltRxPowerHighCnt", "aggr": "AVG"},
+                {"name": "bipHighCnt", "aggr": "AVG"},
+                {"name": "fecHighCnt", "aggr": "AVG"},
+                {"name": "ODN_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "ODN分钟级时序变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "RxPower", "aggr": "AVG"},
+                {"name": "bipHigh", "aggr": "AVG"},
+                {"name": "fecHigh", "aggr": "AVG"},
+                {"name": "oltRxPowerHigh", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "ODN分钟级周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "RxPower", "aggr": "AVG"},
+                {"name": "oltRxWeakLight", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_Wifi",
+    "keywords": ["WiFi", "Wifi", "wifi", "无线", "干扰", "信号差", "Wi-Fi"],
+    "macroPlan": {
+      "goal": "定位WiFi干扰问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位WiFi低分PON口", "table_level": "day", "focus_dimensions": ["Wifi"]},
+        {"phase_id": 2, "name": "WiFi细化字段根因定位", "table_level": "day", "focus_dimensions": ["Wifi"]},
+        {"phase_id": 3, "name": "分钟表WiFi时序验证", "table_level": "minute", "focus_dimensions": ["Wifi"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别WiFi评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Wifi_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "WiFi各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Wifi_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "WiFi细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "diagLossHighCnt", "aggr": "AVG"},
+                {"name": "diagTimeDelayHighCnt", "aggr": "AVG"},
+                {"name": "highInterferencePercent", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "WiFi细化字段最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "dBmPercent", "aggr": "AVG"},
+                {"name": "roamDelayCnt", "aggr": "AVG"},
+                {"name": "emptyDelayCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "WiFi干扰指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "diagLossHighCnt", "aggr": "AVG"},
+                {"name": "highInterferencePercent", "aggr": "AVG"},
+                {"name": "Wifi_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "WiFi分钟级时序变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "diagLossHigh", "aggr": "AVG"},
+                {"name": "maxDiagLossRate", "aggr": "AVG"},
+                {"name": "highCnt", "aggr": "AVG"},
+                {"name": "avgWifiSignal", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "WiFi分钟级干扰周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "highCnt", "aggr": "AVG"},
+                {"name": "avgSnr", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_Service",
+    "keywords": ["质差", "业务质差", "用户质差率", "质差次数", "质差问题", "业务差"],
+    "macroPlan": {
+      "goal": "定位业务质差问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位Service低分PON口", "table_level": "day", "focus_dimensions": ["Service"]},
+        {"phase_id": 2, "name": "Service细化字段根因定位", "table_level": "day", "focus_dimensions": ["Service"]},
+        {"phase_id": 3, "name": "分钟表Service时序验证", "table_level": "minute", "focus_dimensions": ["Service"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别Service评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Service_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Service各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Service_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Service细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "officeDepressionTimesPercent", "aggr": "AVG"},
+                {"name": "gameDepressionTimesPercent", "aggr": "AVG"},
+                {"name": "videoCallDepressionTimesPercent", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Service业务质差最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "educationDepressionTimesPercent", "aggr": "AVG"},
+                {"name": "liveVideoDepressionTimesPercent", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "Service业务质差指标相关性",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "officeDepressionTimesPercent", "aggr": "AVG"},
+                {"name": "gameDepressionTimesPercent", "aggr": "AVG"},
+                {"name": "Service_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Service分钟级时序变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "officePoorQualityCount", "aggr": "AVG"},
+                {"name": "gamePoorQualityCount", "aggr": "AVG"},
+                {"name": "videoCallPoorQualityCount", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Service业务质差周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "officePoorQualityCount", "aggr": "AVG"},
+                {"name": "educationPoorQualityCount", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_Gateway",
+    "keywords": ["网关", "家庭网关", "网关问题", "网关异常", "网关故障"],
+    "macroPlan": {
+      "goal": "定位网关问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位Gateway低分PON口", "table_level": "day", "focus_dimensions": ["Gateway"]},
+        {"phase_id": 2, "name": "Gateway细化字段根因定位", "table_level": "day", "focus_dimensions": ["Gateway"]},
+        {"phase_id": 3, "name": "分钟表Gateway时序验证", "table_level": "minute", "focus_dimensions": ["Gateway"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别Gateway评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Gateway_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Gateway各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Gateway_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Gateway细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "apExceHighCnt", "aggr": "AVG"},
+                {"name": "homeRamHighCnt", "aggr": "AVG"},
+                {"name": "homeCpuMaxHighCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Gateway资源占用最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "apRamHighCnt", "aggr": "AVG"},
+                {"name": "apCpuMaxHighCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "Gateway资源指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "apExceHighCnt", "aggr": "AVG"},
+                {"name": "homeRamHighCnt", "aggr": "AVG"},
+                {"name": "Gateway_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Gateway分钟级时序变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "homeRamHigh", "aggr": "AVG"},
+                {"name": "homeCpuMaxHigh", "aggr": "AVG"},
+                {"name": "apRamHigh", "aggr": "AVG"},
+                {"name": "apCpuMaxHigh", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Gateway资源占用周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "apExceHighCnt", "aggr": "AVG"},
+                {"name": "homeCpuMaxHigh", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_Stability",
+    "keywords": ["稳定性差", "频繁断线", "告警多", "断线", "掉线", "稳定性"],
+    "macroPlan": {
+      "goal": "定位稳定性问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位Stability低分PON口", "table_level": "day", "focus_dimensions": ["Stability"]},
+        {"phase_id": 2, "name": "Stability细化字段根因定位", "table_level": "day", "focus_dimensions": ["Stability"]},
+        {"phase_id": 3, "name": "分钟表Stability时序验证", "table_level": "minute", "focus_dimensions": ["Stability"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别Stability评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Stability_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Stability各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Stability_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Stability断线频次异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "count_mean", "aggr": "AVG"},
+                {"name": "count_max", "aggr": "AVG"},
+                {"name": "interruption_same_day_max", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Stability断线最严重PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "interruption_same_day", "aggr": "AVG"},
+                {"name": "interruption_week_ave", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "Stability断线指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "count_mean", "aggr": "AVG"},
+                {"name": "interruption_same_day", "aggr": "AVG"},
+                {"name": "Stability_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Stability分钟级断线变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "alarmCount", "aggr": "AVG"},
+                {"name": "unclearedAlarmCount_A", "aggr": "AVG"},
+                {"name": "zeroNegotiationRxRateCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Stability断线周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "alarmCount", "aggr": "AVG"},
+                {"name": "zeroAchievableRateCnt", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_Rate",
+    "keywords": ["速率低", "限速", "带宽不足", "网速慢", "下载慢", "上传慢"],
+    "macroPlan": {
+      "goal": "定位速率低问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位Rate低分PON口", "table_level": "day", "focus_dimensions": ["Rate"]},
+        {"phase_id": 2, "name": "Rate细化字段根因定位", "table_level": "day", "focus_dimensions": ["Rate"]},
+        {"phase_id": 3, "name": "分钟表Rate时序验证", "table_level": "minute", "focus_dimensions": ["Rate"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别Rate评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Rate_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Rate各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "Rate_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Rate速率细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "maxTxRateHighCnt", "aggr": "AVG"},
+                {"name": "meanRxRateHighCnt", "aggr": "AVG"},
+                {"name": "peakRxRateHighCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Rate流量限速最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "isTxTrafficHighCnt", "aggr": "AVG"},
+                {"name": "isRxTrafficHighCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "Rate速率指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "maxTxRateHighCnt", "aggr": "AVG"},
+                {"name": "peakRxRateHighCnt", "aggr": "AVG"},
+                {"name": "Rate_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "Rate分钟级速率变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "maxTxTraffic", "aggr": "AVG"},
+                {"name": "meanRxTraffic", "aggr": "AVG"},
+                {"name": "peakRxRate", "aggr": "AVG"},
+                {"name": "peakRxRateHigh", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "Rate速率周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "peakRxRate", "aggr": "AVG"},
+                {"name": "meanRxTraffic", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_OLT",
+    "keywords": ["OLT", "PON口", "PON口异常", "OLT问题", "上行丢包"],
+    "macroPlan": {
+      "goal": "定位OLT/PON口问题并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位OLT低分PON口", "table_level": "day", "focus_dimensions": ["OLT"]},
+        {"phase_id": 2, "name": "OLT细化字段根因定位", "table_level": "day", "focus_dimensions": ["OLT"]},
+        {"phase_id": 3, "name": "分钟表OLT时序验证", "table_level": "minute", "focus_dimensions": ["OLT"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别OLT评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "OLT_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "OLT各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "OLT_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "OLT上行丢包细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "G10UpPlrHighCnt", "aggr": "AVG"},
+                {"name": "G1UpPlrHighCnt", "aggr": "AVG"},
+                {"name": "portUpPlrHighCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "OLT上行丢包率最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "G10UpPlrPercent", "aggr": "AVG"},
+                {"name": "G1UpPlrPercent", "aggr": "AVG"},
+                {"name": "portUpPlrPercent", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "OLT丢包指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "G10UpPlrHighCnt", "aggr": "AVG"},
+                {"name": "portUpPlrHighCnt", "aggr": "AVG"},
+                {"name": "OLT_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "OLT分钟级丢包变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "G1UpPlr", "aggr": "AVG"},
+                {"name": "G10UpPlr", "aggr": "AVG"},
+                {"name": "portUpPlr", "aggr": "AVG"},
+                {"name": "portUpPlrHigh", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "OLT上行丢包周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "G1UpPlr", "aggr": "AVG"},
+                {"name": "G1UpPlrHigh", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "task_type": "指定维度_STA",
+    "keywords": ["终端", "STA", "接入设备", "终端问题", "接入设备多", "终端数多"],
+    "macroPlan": {
+      "goal": "定位终端/STA问题PON口并验证根因指标",
+      "total_phases": 3,
+      "phases": [
+        {"phase_id": 1, "name": "定位STA低分PON口", "table_level": "day", "focus_dimensions": ["STA"]},
+        {"phase_id": 2, "name": "STA细化字段根因定位", "table_level": "day", "focus_dimensions": ["STA"]},
+        {"phase_id": 3, "name": "分钟表STA时序验证", "table_level": "minute", "focus_dimensions": ["STA"]}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别STA评分最低PON口",
+            "insight_type": "OutstandingMin",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "STA_score", "aggr": "AVG"}]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "STA各子指标归因分析",
+            "insight_type": "Attribution",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "STA_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "STA终端质量细化字段异常检测",
+            "insight_type": "OutlierDetection",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "lowSatisfactionStaCnt", "aggr": "AVG"},
+                {"name": "isAchievableRateHighCnt", "aggr": "AVG"},
+                {"name": "lowAntennaPercent", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "STA满意度最差PON口",
+            "insight_type": "OutstandingMax",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "midSatisfactionStaCnt", "aggr": "AVG"},
+                {"name": "lowSatisfactionStaCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 3,
+            "step_name": "STA终端指标相关性分析",
+            "insight_type": "CrossMeasureCorrelation",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "lowSatisfactionStaCnt", "aggr": "AVG"},
+                {"name": "isAchievableRateHighCnt", "aggr": "AVG"},
+                {"name": "STA_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 3,
+        "table_level": "minute",
+        "entity_filter": {"from_phase": 1, "field": "portUuid"},
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "STA分钟级终端变点检测",
+            "insight_type": "ChangePoint",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "avgAchievableRate", "aggr": "AVG"},
+                {"name": "numSTA", "aggr": "AVG"},
+                {"name": "avgNegotiationTxRate", "aggr": "AVG"},
+                {"name": "zeroAchievableRateCnt", "aggr": "AVG"}
+              ]
+            }
+          },
+          {
+            "step_id": 2,
+            "step_name": "STA终端接入周期性分析",
+            "insight_type": "Seasonality",
+            "query_config": {
+              "dimensions": "{{entity_filter}}",
+              "breakdown": {"name": "time_id", "type": "ORDERED"},
+              "measures": [
+                {"name": "numSTA", "aggr": "AVG"},
+                {"name": "avgAchievableRate", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
