@@ -326,5 +326,65 @@
         ]
       }
     ]
+  },
+  {
+    "task_type": "根因分析_通用",
+    "keywords": ["网络短板", "短板分析", "分析短板", "找出短板", "当前短板"],
+    "macroPlan": {
+      "goal": "分析当前网络短板，定位 CEI 低分 PON 口并逐层下钻根因",
+      "total_phases": 4,
+      "phases": [
+        {"phase_id": 1, "name": "定位低分 PON 口", "milestone": "识别 CEI 得分最低的 PON 口列表", "table_level": "day", "description": "用 OutstandingMin 找出 CEI_score 最低的 portUuid", "focus_dimensions": []},
+        {"phase_id": 2, "name": "识别问题维度", "milestone": "确定低分 PON 口在哪个维度得分最低", "table_level": "day", "description": "聚焦低分 PON 口，比较 8 个维度_score，找出拖分维度", "focus_dimensions": []},
+        {"phase_id": 3, "name": "定位根因指标", "milestone": "找出问题维度内的具体异常指标", "table_level": "day", "description": "针对问题维度，分析天表细化字段（HighCnt/Percent 等）", "focus_dimensions": []},
+        {"phase_id": 4, "name": "时序验证与相关性分析", "milestone": "验证根因指标的时序分布与相关性", "table_level": "minute", "description": "下钻分钟表，分析质差次数与根因指标的时序相关性", "focus_dimensions": []}
+      ]
+    },
+    "phase_templates": [
+      {
+        "phase_id": 1,
+        "table_level": "day",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "找出 CEI_score 最低的 PON 口",
+            "insight_type": "OutstandingMin",
+            "rationale": "定位 CEI 总分最低的 PON 口，作为后续分析的焦点设备",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [{"name": "CEI_score", "aggr": "AVG"}]
+            }
+          }
+        ]
+      },
+      {
+        "phase_id": 2,
+        "table_level": "day",
+        "note": "dimensions [[]] 需在输出 decompose_result 前替换为 Phase 1 found_entities.portUuid 的 IN 过滤",
+        "steps": [
+          {
+            "step_id": 1,
+            "step_name": "识别低分 PON 口的问题维度",
+            "insight_type": "OutstandingMin",
+            "rationale": "聚焦 Phase 1 发现的低分 PON 口，比较 8 个维度得分，找出拖分最严重的维度",
+            "query_config": {
+              "dimensions": [[]],
+              "breakdown": {"name": "portUuid", "type": "UNORDERED"},
+              "measures": [
+                {"name": "Stability_score", "aggr": "AVG"},
+                {"name": "ODN_score", "aggr": "AVG"},
+                {"name": "Rate_score", "aggr": "AVG"},
+                {"name": "Service_score", "aggr": "AVG"},
+                {"name": "OLT_score", "aggr": "AVG"},
+                {"name": "Gateway_score", "aggr": "AVG"},
+                {"name": "STA_score", "aggr": "AVG"},
+                {"name": "Wifi_score", "aggr": "AVG"}
+              ]
+            }
+          }
+        ]
+      }
+    ]
   }
 ]

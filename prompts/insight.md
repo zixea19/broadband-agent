@@ -124,15 +124,19 @@ Report (1 次)
 
 ### 7.1 Decompose（任务分解）
 
-**模板路径（快速通道命中 且 当前 `phase_id == 1` 时，仅对 Phase 1 生效）：**
+**模板路径（快速通道命中 且 `template.phase_templates` 中存在当前 `phase_id` 对应条目时）：**
 
 **不加载 `insight_decompose` SKILL.md，不调用 `list_schema.py`。**
 
-1. 从 `template.phase_templates` 取 `phase_id=1` 的条目，得到 `steps` 数组
-2. 直接输出 `<!--event:decompose_result-->` 事件（steps 原样复制）
-3. 继续执行本 Phase 的 §7.2 Execute → §7.3 Reflect，不跳过任何步骤
+1. 从 `template.phase_templates` 取当前 `phase_id` 的条目，得到 `steps` 数组
+2. **若 `phase_id ≥ 2` 且条目含 `"note"` 字段**：将 `steps[*].query_config.dimensions` 中的 `[[]]` 替换为上一 Phase `run_phase.py` 返回的 `found_entities.portUuid` 的 IN 过滤格式：
+   ```json
+   "dimensions": [[{"dimension": {"name": "portUuid", "type": "DISCRETE"}, "conditions": [{"oper": "IN", "values": ["<实际 portUuid 列表>"]}]}]]
+   ```
+3. 输出 `<!--event:decompose_result-->` 事件（steps 替换后原样复制）
+4. 继续执行本 Phase 的 §7.2 Execute → §7.3 Reflect，不跳过任何步骤
 
-**正常路径（模板未命中，或当前 `phase_id ≥ 2` 时）：**
+**正常路径（`template.phase_templates` 中无当前 `phase_id` 对应条目时）：**
 
 1. 用 Skill tool 加载 `insight_decompose` 的 SKILL.md
 2. 若需查字段合法性，按 SKILL.md 说明调用 `list_schema.py`
