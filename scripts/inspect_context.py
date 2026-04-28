@@ -149,15 +149,29 @@ def _parse_content(raw: str | list | dict) -> tuple[str, str]:
     return label, preview
 
 
+def _parse_msg_content(raw: str | list | dict | None) -> str | list | dict:
+    """安全地把 message.content 解析为结构化对象（失败则原样返回字符串）。"""
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        return raw
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, (dict, list)):
+            return parsed
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return raw
+
+
+def _msg_tokens(msg: dict) -> int:
+    """估算单条 message 的 token 数，对任何 content 格式都安全。"""
+    return _estimate_tokens(_extract_content_str(_parse_msg_content(msg.get("content", ""))))
+
+
 def _format_message(msg: dict, is_new: bool, show_full: bool, max_preview: int = 120) -> str:
     role = msg.get("role", "unknown")
-    raw_content = msg.get("content", "")
-
-    # content 可能是 JSON 字符串（tracer 序列化结果）
-    try:
-        content = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
-    except (json.JSONDecodeError, TypeError):
-        content = raw_content
+    content = _parse_msg_content(msg.get("content", ""))
 
     label, preview = _parse_content(content)
     tokens = _estimate_tokens(_extract_content_str(content))
@@ -289,16 +303,7 @@ def inspect(
         payload = record.get("payload", {})
         messages = payload.get("messages", [])
         msg_count = len(messages)
-        total_tokens = sum(
-            _estimate_tokens(
-                _extract_content_str(
-                    json.loads(m.get("content", ""))
-                    if isinstance(m.get("content"), str)
-                    else m.get("content", "")
-                )
-            )
-            for m in messages
-        )
+        total_tokens = sum(_msg_tokens(m) for m in messages)
         new_count = msg_count - prev_count
         delta_str = f"  {_c(f'+{new_count} new', 'new')}" if new_count > 0 and call_idx > 1 else ""
 
@@ -317,16 +322,7 @@ def inspect(
         p = 0
         for r in prompts:
             msgs = r.get("payload", {}).get("messages", [])
-            total = sum(
-                _estimate_tokens(
-                    _extract_content_str(
-                        json.loads(m.get("content", ""))
-                        if isinstance(m.get("content"), str)
-                        else m.get("content", "")
-                    )
-                )
-                for m in msgs
-            )
+            total = sum(_msg_tokens(m) for m in msgs)
             all_tokens.append(total)
             p = len(msgs)
 
