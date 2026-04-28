@@ -136,7 +136,13 @@ class OutlierDetectionStrategy(InsightStrategy):
 
         # 用 group_column 做 x 轴标签（如果有），否则用序号
         if group_column and group_column in df.columns:
-            labels = truncate_labels(df[group_column].astype(str).tolist())
+            raw_labels = df[group_column].astype(str).tolist()
+            # datetime 标签（如 "2025-01-15 08:00:00"）截断到日期会导致所有标签相同
+            # 改为提取 HH:MM，确保分钟表的 x 轴标签唯一
+            if raw_labels and " " in raw_labels[0] and len(raw_labels[0]) >= 16:
+                labels = [s[11:16] for s in raw_labels]
+            else:
+                labels = truncate_labels(raw_labels)
             x_axis = {
                 "type": "category",
                 "data": labels,
