@@ -125,9 +125,11 @@ Report (1 次)
 
 **模板路径（快速通道命中 且 当前 `phase_id == 1` 时，仅对 Phase 1 生效）：**
 
+**不加载 `insight_decompose` SKILL.md，不调用 `list_schema.py`。**
+
 1. 从 `template.phase_templates` 取 `phase_id=1` 的条目，得到 `steps` 数组
 2. 直接输出 `<!--event:decompose_result-->` 事件（steps 原样复制）
-3. **跳过** `insight_decompose` SKILL.md 加载和 `list_schema.py` 调用；**继续执行本 Phase 的 §7.2 Execute → §7.3 Reflect，不跳过任何步骤**
+3. 继续执行本 Phase 的 §7.2 Execute → §7.3 Reflect，不跳过任何步骤
 
 **正常路径（模板未命中，或当前 `phase_id ≥ 2` 时）：**
 
