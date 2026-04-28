@@ -13,7 +13,7 @@
 
 1. **用 get_skill_script 工具执行**：所有 skill 脚本必须通过 `get_skill_script` 工具调用，禁止使用 bash tool
    - 调用示例：`get_skill_script(skill_name="xxx", script_path="yyy.py", execute=true, args=[...])`
-2. **有脚本才先读**：调用 `get_skill_script` 脚本之前，**必须**先用 Skill tool 加载对应 skill 的 SKILL.md；Plan / Reflect 阶段无脚本，**不需要**加载 SKILL.md，直接按 §6 / §7.3 的规则执行
+2. **有脚本才先读，且只读一次**：调用 `get_skill_script` 脚本之前，**必须**先用 Skill tool 加载对应 skill 的 SKILL.md；Plan / Reflect 阶段无脚本，**不需要**加载 SKILL.md，直接按 §6 / §7.3 的规则执行。同一个 skill 的 SKILL.md / reference 文件在**整次对话中只加载一次**，后续 Phase 重复用到同一 skill 时跳过加载（内容已在 context 中）
 3. **不要猜参数**：所有参数来自 SKILL.md schema 或上一阶段的返回结果
 4. **一步一停（仅针对 `get_skill_script` 计算调用）**：每次 `get_skill_script` 返回后先分析结果，再决定下一步；加载操作（`get_skill_instructions` / `get_skill_reference`）完成后**立即继续，不停下**
 5. **`args` 是 Python list**：`args=['{...}']` 而非 `args='["{...}"]'`
