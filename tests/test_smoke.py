@@ -1343,5 +1343,103 @@ def test_db_init():
         db_path.unlink(missing_ok=True)
 
 
+# ============================================================================
+# 洞察模板快速通道 (match_template.py)
+# ============================================================================
+
+
+def _run_match_template(question: str) -> dict:
+    """直接调用 match_template.main()，绕开 get_skill_script，无需 vendor。"""
+    mod = _load_script("insight_plan", "match_template.py")
+    original_argv = sys.argv[:]
+    try:
+        sys.argv = ["match_template.py", json.dumps({"question": question})]
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            mod.main()
+        return json.loads(buf.getvalue())
+    finally:
+        sys.argv = original_argv
+
+
+def test_match_template_hit_returns_correct_task_type():
+    """ODN 关键词命中，返回 status=hit + 正确 task_type + 完整模板结构。"""
+    result = _run_match_template("这个局点的光功率问题很严重，ODN评分持续偏低")
+    assert result["status"] == "hit"
+    assert result["task_type"] == "指定维度_ODN"
+    tpl = result["template"]
+    assert "macroPlan" in tpl
+    assert tpl["macroPlan"]["total_phases"] == 3
+    assert len(tpl["phase_templates"]) == 3
+    # Phase 1 无 entity_filter，dimensions 是真实列表
+    p1 = tpl["phase_templates"][0]
+    assert p1["phase_id"] == 1
+    assert isinstance(p1["steps"][0]["query_config"]["dimensions"], list)
+    # Phase 2 有 entity_filter 占位符且 dimensions 为模板字符串
+    p2 = tpl["phase_templates"][1]
+    assert p2["phase_id"] == 2
+    assert "entity_filter" in p2
+    assert p2["steps"][0]["query_config"]["dimensions"] == "{{entity_filter}}"
+
+
+def test_match_template_all_eight_dimensions_have_template():
+    """8 个维度（ODN/Wifi/Service/Gateway/Stability/Rate/OLT/STA）各有至少一个关键词能命中。"""
+    dimension_probes = {
+        "指定维度_ODN": "BIP指标异常",
+        "指定维度_Wifi": "WiFi信号差",
+        "指定维度_Service": "用户质差次数高",
+        "指定维度_Gateway": "网关异常导致断线",
+        "指定维度_Stability": "频繁断线告警",
+        "指定维度_Rate": "速率低带宽不足",
+        "指定维度_OLT": "OLT上行丢包",
+        "指定维度_STA": "STA终端接入异常",
+    }
+    for expected_type, question in dimension_probes.items():
+        result = _run_match_template(question)
+        assert result["status"] == "hit", f"问题 '{question}' 应命中但未命中"
+        assert result["task_type"] == expected_type, (
+            f"问题 '{question}' 预期 {expected_type}，实际 {result['task_type']}"
+        )
+
+
+def test_match_template_miss_on_generic_question():
+    """根因分析类问题（无业务维度关键词）应返回 status=miss。"""
+    for question in [
+        "为什么这个区域整体网络质量下降",
+        "分析一下CEI_score低的根因",
+        "帮我看看最近的洞察数据",
+    ]:
+        result = _run_match_template(question)
+        assert result["status"] == "miss", f"问题 '{question}' 不应命中但返回了 {result}"
+
+
+def test_match_template_phase2_entity_filter_placeholder_exists():
+    """8 个维度模板的 Phase 2（天表细化）中，dimensions 应含 {{entity_filter}} 占位符。"""
+    dimension_probes = {
+        "指定维度_ODN": "ODN光衰高",
+        "指定维度_Wifi": "wifi干扰",
+        "指定维度_Service": "质差问题",
+        "指定维度_Gateway": "家庭网关异常",
+        "指定维度_Stability": "稳定性差",
+        "指定维度_Rate": "限速",
+        "指定维度_OLT": "PON口异常",
+        "指定维度_STA": "终端问题",
+    }
+    for expected_type, question in dimension_probes.items():
+        result = _run_match_template(question)
+        assert result["status"] == "hit", f"{expected_type} 应命中"
+        phase_templates = result["template"]["phase_templates"]
+        p2 = next((p for p in phase_templates if p["phase_id"] == 2), None)
+        assert p2 is not None, f"{expected_type} 缺少 phase_id=2 模板"
+        assert "entity_filter" in p2, f"{expected_type} Phase 2 缺少 entity_filter 字段"
+        for step in p2["steps"]:
+            assert step["query_config"]["dimensions"] == "{{entity_filter}}", (
+                f"{expected_type} Phase 2 step {step['step_id']} dimensions 不是占位符"
+            )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
