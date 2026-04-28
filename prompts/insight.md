@@ -123,16 +123,13 @@ Report (1 次)
 
 ### 7.1 Decompose（任务分解）
 
-**模板路径（快速通道命中且 `template.phase_templates` 中存在当前 `phase_id` 的条目时）：**
+**模板路径（快速通道命中 且 当前 `phase_id == 1` 时，仅对 Phase 1 生效）：**
 
-1. 从 `template.phase_templates` 取 `phase_id` 匹配的项，得到 `steps` 数组
-2. 若某 step 的 `query_config.dimensions == "{{entity_filter}}"`：
-   - 从 `entity_filter.from_phase` 对应 Phase 的 `phase_complete` 事件中，取 `OutstandingMin` 或 `Attribution` 类型 step 的 `found_entities[entity_filter.field]` 值列表
-   - 将 `"{{entity_filter}}"` 替换为标准三元组：`[[{"dimension": {"name": "<entity_filter.field>", "type": "DISCRETE"}, "conditions": [{"oper": "IN", "values": [...实际值...]}]}]]`
-3. 直接输出 `<!--event:decompose_result-->` 事件（steps 原样复制，dimensions 已替换）
-4. **跳过** `insight_decompose` SKILL.md 加载和 `list_schema.py` 调用，直接进入 Execute
+1. 从 `template.phase_templates` 取 `phase_id=1` 的条目，得到 `steps` 数组
+2. 直接输出 `<!--event:decompose_result-->` 事件（steps 原样复制）
+3. **跳过** `insight_decompose` SKILL.md 加载和 `list_schema.py` 调用；**继续执行本 Phase 的 §7.2 Execute → §7.3 Reflect，不跳过任何步骤**
 
-**正常路径（模板未命中，或 `template.phase_templates` 中无当前 phase_id 条目时）：**
+**正常路径（模板未命中，或当前 `phase_id ≥ 2` 时）：**
 
 1. 用 Skill tool 加载 `insight_decompose` 的 SKILL.md
 2. 若需查字段合法性，按 SKILL.md 说明调用 `list_schema.py`
